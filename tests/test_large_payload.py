@@ -20,10 +20,10 @@ _TOKENIZER_PATH = os.path.join(_REPO_ROOT, "tokenizers", "DeepSeek-R1")
 
 
 def _free_port():
-    with socket.socket() as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    with socket.socket() as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 _PREFILL_PORT = _free_port()
@@ -69,14 +69,15 @@ def anyio_backend():
 async def client():
     app = _make_proxy_app()
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
+    async with AsyncClient(transport=transport, base_url="http://test") as cli:
+        yield cli
 
 
 @pytest.mark.anyio
 async def test_large_prompt(client: AsyncClient):
-    """A very long prompt should still be handled (not crash)."""
-    long_content = "Hello world. " * 500
+    """A 10K+ token prompt should still be handled without crashing."""
+    # ~12K tokens: each "word_NNNN " is roughly 2 tokens
+    long_content = " ".join(f"word_{idx}" for idx in range(6000))
     payload = {
         "model": "dummy",
         "messages": [{"role": "user", "content": long_content}],
@@ -87,11 +88,12 @@ async def test_large_prompt(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert "choices" in data
+    assert len(data["choices"]) >= 1
 
 
 @pytest.mark.anyio
 async def test_max_tokens_zero(client: AsyncClient):
-    """max_tokens=0 should be handled gracefully."""
+    """max_tokens=0 → 200 with 0 completion tokens."""
     payload = {
         "model": "dummy",
         "messages": [{"role": "user", "content": "Hi"}],
@@ -99,13 +101,14 @@ async def test_max_tokens_zero(client: AsyncClient):
         "stream": False,
     }
     resp = await client.post("/v1/chat/completions", json=payload)
-    # Should not crash; response may vary
-    assert resp.status_code in (200, 400, 422, 500)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["usage"]["completion_tokens"] == 0
 
 
 @pytest.mark.anyio
 async def test_max_tokens_negative(client: AsyncClient):
-    """Negative max_tokens should be handled."""
+    """Negative max_tokens should be rejected with 400 or 422."""
     payload = {
         "model": "dummy",
         "messages": [{"role": "user", "content": "Hi"}],
@@ -113,12 +116,12 @@ async def test_max_tokens_negative(client: AsyncClient):
         "stream": False,
     }
     resp = await client.post("/v1/chat/completions", json=payload)
-    assert resp.status_code in (200, 400, 422, 500)
+    assert resp.status_code in (400, 422)
 
 
 @pytest.mark.anyio
 async def test_max_tokens_very_large(client: AsyncClient):
-    """Very large max_tokens should be handled."""
+    """Very large max_tokens should succeed (dummy backend caps output)."""
     payload = {
         "model": "dummy",
         "messages": [{"role": "user", "content": "Hi"}],
@@ -126,4 +129,6 @@ async def test_max_tokens_very_large(client: AsyncClient):
         "stream": False,
     }
     resp = await client.post("/v1/chat/completions", json=payload)
-    assert resp.status_code in (200, 400, 422, 500)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "choices" in data
