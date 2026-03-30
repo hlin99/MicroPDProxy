@@ -137,3 +137,36 @@ async def test_max_tokens_very_large(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert "choices" in data
+
+
+@pytest.mark.anyio
+async def test_missing_messages_returns_400(client: AsyncClient):
+    """POST /v1/chat/completions without 'messages' should return 400."""
+    resp = await client.post(
+        "/v1/chat/completions",
+        json={"model": "dummy", "max_tokens": 5},
+    )
+    assert resp.status_code == 400
+    assert "messages" in resp.json()["error"]["message"].lower()
+
+
+@pytest.mark.anyio
+async def test_missing_prompt_returns_400(client: AsyncClient):
+    """POST /v1/completions without 'prompt' should return 400."""
+    resp = await client.post(
+        "/v1/completions",
+        json={"model": "dummy", "max_tokens": 5},
+    )
+    assert resp.status_code == 400
+    assert "prompt" in resp.json()["error"]["message"].lower()
+
+
+@pytest.mark.anyio
+async def test_invalid_messages_type_returns_400(client: AsyncClient):
+    """POST /v1/chat/completions with non-list 'messages' should return 400."""
+    resp = await client.post(
+        "/v1/chat/completions",
+        json={"model": "dummy", "messages": "not a list", "max_tokens": 5},
+    )
+    assert resp.status_code == 400
+    assert "list" in resp.json()["error"]["message"].lower()
