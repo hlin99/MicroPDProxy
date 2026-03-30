@@ -627,7 +627,10 @@ class Proxy:
                     decode_instance=decode_instance,
                     req_len=total_length
                 )
-                return None
+                return JSONResponse(
+                    content={"error": "No available instance can handle the request"},
+                    status_code=503
+                )
 
             value = b''
             try:
@@ -686,10 +689,12 @@ class Proxy:
                     logger.error("[1] Exception in wrapped_generator: %s", str(e))
                     raise
             return StreamingResponse(wrapped_generator(), media_type=media_type)
-        except Exception:
-            exc_info = sys.exc_info()
-            print("Error occurred in disagg proxy server")
-            print(exc_info)
+        except Exception as e:
+            logger.error("Error occurred in disagg proxy server: %s", str(e))
+            return JSONResponse(
+                content={"error": f"Internal proxy error: {str(e)}"},
+                status_code=500
+            )
 
     async def create_chat_completion(self, raw_request: Request):
         try:
@@ -736,7 +741,10 @@ class Proxy:
                     decode_instance=decode_instance,
                     req_len=total_length
                 )
-                return None
+                return JSONResponse(
+                    content={"error": "No available instance can handle the request"},
+                    status_code=503
+                )
 
             value = b''
             try:
@@ -796,13 +804,12 @@ class Proxy:
                     logger.error("[1] Exception in wrapped_generator: %s", str(e))
                     raise
             return StreamingResponse(wrapped_generator(), media_type=media_type)
-        except Exception:
-            exc_info = sys.exc_info()
-            error_messages = [str(e) for e in exc_info if e]
-            print("Error occurred in disagg proxy server")
-            print(error_messages)
-            return StreamingResponse(content=iter(error_messages),
-                                     media_type="application/json")
+        except Exception as e:
+            logger.error("Error occurred in disagg proxy server: %s", str(e))
+            return JSONResponse(
+                content={"error": f"Internal proxy error: {str(e)}"},
+                status_code=500
+            )
 
     def remove_instance_endpoint(self, instance_type, instance):
         return
@@ -944,17 +951,12 @@ class LoadBalancedScheduler(SchedulingPolicy):
                                     f"instance = {index}, req_len={req_len}")
 
                     self.prefill_bs_counter[index] -= 1
-                    all_zero = True
-                    for index, _ in enumerate(self.prefill_instances):
-                        if self.prefill_bs_counter[index] != 0:
-                            all_zero = False
-                            break
+                    all_zero = all(c == 0 for c in self.prefill_bs_counter)
                     if all_zero:
                         log_info_red("<Prefill in idle state>")
-                        for index, _ in enumerate(self.prefill_instances):
-                            self.prefill_utils_counter[index] = 0
+                        for i in range(len(self.prefill_instances)):
+                            self.prefill_utils_counter[i] = 0
                     else:
-                        index = self.prefill_instances.index(prefill_instance)
                         self.prefill_utils_counter[index] -= req_len
 
             if decode_instance:
@@ -968,17 +970,12 @@ class LoadBalancedScheduler(SchedulingPolicy):
                                   f"instance = {index}, req_len={req_len}")
 
                     self.decode_bs_counter[index] -= 1
-                    all_zero = True
-                    for index, _ in enumerate(self.decode_instances):
-                        if self.decode_bs_counter[index] != 0:
-                            all_zero = False
-                            break
+                    all_zero = all(c == 0 for c in self.decode_bs_counter)
                     if all_zero:
                         log_info_red("<Decode in idle state>")
                         self.decode_kv_utils_counter = [0] * len(
                             self.decode_instances)
                     else:
-                        index = self.decode_instances.index(decode_instance)
                         self.decode_kv_utils_counter[index] -= req_len
                         log_info_blue(
                             f"<schedule_completion decode> "
