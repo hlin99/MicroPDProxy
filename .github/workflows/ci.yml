@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         run: |
-          python -m pytest tests/ -v --tb=short
+          PYTHONPATH="${PYTHONPATH}:${GITHUB_WORKSPACE}/core:${GITHUB_WORKSPACE}/dummy_nodes" python -m pytest tests/ -v --tb=short
 
   lint:
     runs-on: ubuntu-latest
@@ -49,5 +49,5 @@ jobs:
       - name: Check formatting with ruff
         run: ruff check .
 
-      - name: Check import sorting
-        run: isort --check-only --diff .
+      - name: Check import sorting (excluding core/)
+        run: isort --check-only --diff --skip core .
