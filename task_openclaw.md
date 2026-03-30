@@ -30,7 +30,15 @@ Notes:
 
 ---
 
-## 2. Task one
+## 2. Current task
+
+### Task two (IN PROGRESS)
+
+Continue with task two described below. This is the current active implementation task.
+
+---
+
+## 3. Task one (DONE)
 
 The content in `core/` has already been validated on real hardware. The code is considered basically correct.
 
@@ -55,7 +63,7 @@ After debugging, submit PRs.
 
 ---
 
-## 3. Task two (in progress)
+## 4. Task two details
 
 ### Goal
 
@@ -97,7 +105,7 @@ Since the command is long, short aliases such as `-pn`, `-pt`, etc. should also 
 
 ---
 
-## 4. Validation rules
+## 5. Validation rules
 
 The script must validate the input arguments.
 
@@ -119,7 +127,7 @@ nodes <= IP list length
 
 ---
 
-## 5. Topology and mapping rules
+## 6. Topology and mapping rules
 
 ### 5.1 Basic definitions
 
@@ -148,7 +156,7 @@ nodes <= IP list length
 
 ---
 
-## 6. Mapping rules under different TP / world-size relationships
+## 7. Mapping rules under different TP / world-size relationships
 
 ### Case 1: `tp_size <= world_size_per_node`
 
@@ -183,7 +191,7 @@ nodes.
 
 ---
 
-## 7. Implementation constraints
+## 8. Implementation constraints
 
 - Only modify `core/xpyd_start_proxy.sh`.
 - Do not modify other core business logic files.
@@ -194,7 +202,7 @@ nodes.
 
 ---
 
-## 8. Testing requirements
+## 9. Testing requirements
 
 ### 8.1 Same testing requirement as task one
 
