@@ -60,13 +60,13 @@ def _make_proxy_app(
 
 
 def _free_port():
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-_PREFILL_PORT = _free_port()
-_DECODE_PORT = _free_port()
+    """Allocate an ephemeral port and keep the socket open until the caller binds."""
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
 
 
 def _run_server(app, port):
@@ -74,13 +74,17 @@ def _run_server(app, port):
     uvicorn.Server(config).run()
 
 
+# Use unique ports per test session to avoid collisions with other test files
+_PREFILL_PORT = _free_port()
+_DECODE_PORT = _free_port()
+
 threading.Thread(
     target=_run_server, args=(prefill_app, _PREFILL_PORT), daemon=True
 ).start()
 threading.Thread(
     target=_run_server, args=(decode_app, _DECODE_PORT), daemon=True
 ).start()
-time.sleep(1)
+time.sleep(2)  # Give servers a bit more time to start
 
 
 # ---------------------------------------------------------------------------

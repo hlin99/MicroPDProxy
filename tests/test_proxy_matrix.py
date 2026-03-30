@@ -45,6 +45,7 @@ MATRIX = [
 
 def _free_port() -> int:
     with socket.socket() as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(("127.0.0.1", 0))
         return sock.getsockname()[1]
 
