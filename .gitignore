@@ -31,4 +31,3 @@ htmlcov/
 
 # Logs
 *.log
-.tmp_vllm_bench*
