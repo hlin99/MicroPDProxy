@@ -32,6 +32,7 @@ Useful docs:
 
 - `docs/xpyd_start_proxy_usage.md` — parameterized script usage and topology rules
 - `docs/one_click_dummy_proxy_setup.md` — end-to-end local dummy + proxy setup guide
+- `docs/terminal_by_terminal_quickstart.md` — copy-paste terminal-by-terminal local setup
 
 Both nodes expose OpenAI-compatible completion/chat-completion endpoints:
 
