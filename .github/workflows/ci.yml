@@ -29,7 +29,31 @@ jobs:
       - name: Run tests
         run: |
           PYTHONPATH="${PYTHONPATH}:${GITHUB_WORKSPACE}/core:${GITHUB_WORKSPACE}/dummy_nodes" \
-            python -m pytest tests/ -v --tb=short
+            python -m pytest tests/ -v --tb=short \
+            --ignore=tests/test_benchmark_integration.py
+
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install vllm
+
+      - name: Run benchmark integration tests
+        run: |
+          PYTHONPATH="${PYTHONPATH}:${GITHUB_WORKSPACE}/core:${GITHUB_WORKSPACE}/dummy_nodes" \
+            python -m pytest tests/test_benchmark_integration.py -v --tb=short -x
 
   lint:
     runs-on: ubuntu-latest
