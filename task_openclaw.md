@@ -38,6 +38,61 @@ Continue with task three described below. This is the current active implementat
 
 ---
 
+## 3. Task three details
+
+### Goal
+
+Support a real benchmark-style validation flow using `vllm bench serve` semantics in a local dummy-based setup.
+
+Reference real-world benchmark command:
+
+```bash
+vllm bench serve --host 10.239.129.239 --port 8868 --model /workspace/hf_models/Qwen3-0.6B-Base/ --dataset-name random --random-input-len 3000 --random-output-len 200 --num-prompts 100 --burstiness 100 --request-rate 3.6
+```
+
+For task three:
+
+- install `vllm` first via `pip install vllm`
+- rewrite host / port / model according to the actual local test environment
+- make the benchmark run successfully against:
+  - 2 dummy prefill instances
+  - 2 dummy decode instances
+  - 1 proxy server
+
+### Required topology
+
+- prefill: TP8, DP2
+- decode: TP1, DP16
+
+### Validation target
+
+Task three is considered complete only if the benchmark can run through the proxy successfully under the topology above.
+
+This is not only a command-generation task. It must be validated end-to-end with real running processes.
+
+### Expected work items
+
+- prepare local dummy prefill / decode topology matching the task-three requirement
+- start proxy with the correct parameterized shell script inputs
+- install and invoke `vllm bench serve` with locally adjusted arguments
+- debug any remaining incompatibility in the proxy / dummy setup if the benchmark cannot run through
+
+### Testing / verification
+
+At minimum, verify:
+
+- the benchmark command can connect to the proxy
+- requests are accepted and processed through the proxy
+- the dummy prefill / decode stack is sufficient to support the benchmark path
+- any missing dummy behavior required by the benchmark flow is fixed if necessary
+
+---
+
+---
+
+## 9. ~~Task two~~ (DONE)
+
+Task two has been implemented and validated.
 
 ## 10. Task two details
 
