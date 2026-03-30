@@ -152,19 +152,8 @@ class SchedulingPolicy(ABC):
         self.lock = threading.Lock()
 
     @abstractmethod
-    def schedule(self,
-                 cycler: itertools.cycle,
-                 is_prompt: Optional[bool] = None,
-                 request_len: Optional[int] = None,
-                 max_tokens: Optional[int] = None) -> Optional[str]:
+    def schedule(self, cycler: itertools.cycle):
         raise NotImplementedError("Scheduling Proxy is not set.")
-
-    def schedule_completion(self,
-                            prefill_instance: Optional[str] = None,
-                            decode_instance: Optional[str] = None,
-                            req_len: Optional[int] = None) -> None:
-        """Called when a request finishes. Override to track load."""
-        pass
 
 
 class Proxy:
@@ -819,9 +808,8 @@ class RoundRobinSchedulingPolicy(SchedulingPolicy):
 
     def schedule(self,
                  cycler: itertools.cycle,
-                 is_prompt: Optional[bool] = None,
-                 request_len: Optional[int] = None,
-                 max_tokens: Optional[int] = None) -> Optional[str]:
+                 request: Optional[dict[str, any]] = None,
+                 max_tokens:Optional[int] = None) -> str:
         return self.safe_next(cycler)
 
 
@@ -986,6 +974,66 @@ class LoadBalancedScheduler(SchedulingPolicy):
                         log_info_blue(f"<schedule_completion decode> "
                                       f"decode_kv_utils_counter: "
                                       f"{self.decode_kv_utils_counter}")
+
+
+
+def parse_instance_spec(spec: str) -> list:
+    """Parse an instance specification string into a list of host:port strings.
+
+    Supported formats:
+        - "host:port"           -> ["host:port"]
+        - "host:start-end"      -> ["host:start", "host:start+1", ..., "host:end"]
+        - "host:p1,p2,p3"       -> ["host:p1", "host:p2", "host:p3"]
+
+    Raises ValueError if the spec does not contain a port.
+    """
+    if ":" not in spec:
+        raise ValueError(f"Invalid instance spec (no port): {spec}")
+
+    host, port_part = spec.rsplit(":", 1)
+
+    if "-" in port_part:
+        start, end = port_part.split("-", 1)
+        return [f"{host}:{p}" for p in range(int(start), int(end) + 1)]
+    elif "," in port_part:
+        return [f"{host}:{p}" for p in port_part.split(",")]
+    else:
+        return [f"{host}:{port_part}"]
+
+
+def create_app(
+    prefill_instances: list | None = None,
+    decode_instances: list | None = None,
+    model: str = "dummy",
+    scheduling_policy=None,
+    generator_on_p_node: bool = False,
+) -> "FastAPI":
+    """Create a FastAPI application with a Proxy router.
+
+    This is a convenience factory for tests and programmatic usage,
+    avoiding the argparse-based ProxyServer entry point.
+    """
+    proxy = Proxy(
+        prefill_instances=prefill_instances or [],
+        decode_instances=decode_instances or [],
+        model=model,
+        scheduling_policy=(
+            scheduling_policy(prefill_instances or [], decode_instances or [])
+            if scheduling_policy is not None
+            else RoundRobinSchedulingPolicy()
+        ),
+        generator_on_p_node=generator_on_p_node,
+    )
+    app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(proxy.router)
+    return app
 
 
 class ProxyServer:
