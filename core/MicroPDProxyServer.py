@@ -592,6 +592,12 @@ class Proxy:
         try:
             request = await raw_request.json()
 
+            if "prompt" not in request:
+                return JSONResponse(
+                    {"error": {"message": "Missing required field: prompt", "type": "invalid_request_error"}},
+                    status_code=400,
+                )
+
             total_length = 0
             prefill_instance = None
             decode_instance = None
@@ -688,12 +694,22 @@ class Proxy:
             return StreamingResponse(wrapped_generator(), media_type=media_type)
         except Exception:
             exc_info = sys.exc_info()
-            print("Error occurred in disagg proxy server")
-            print(exc_info)
+            error_messages = [str(e) for e in exc_info if e]
+            logger.error("Error in create_completion: %s", error_messages)
+            return JSONResponse(
+                {"error": {"message": "Internal proxy error", "type": "proxy_error", "details": error_messages}},
+                status_code=500,
+            )
 
     async def create_chat_completion(self, raw_request: Request):
         try:
             request = await raw_request.json()
+
+            if "messages" not in request:
+                return JSONResponse(
+                    {"error": {"message": "Missing required field: messages", "type": "invalid_request_error"}},
+                    status_code=400,
+                )
 
             total_length = 0
             prefill_instance = None
@@ -799,10 +815,11 @@ class Proxy:
         except Exception:
             exc_info = sys.exc_info()
             error_messages = [str(e) for e in exc_info if e]
-            print("Error occurred in disagg proxy server")
-            print(error_messages)
-            return StreamingResponse(content=iter(error_messages),
-                                     media_type="application/json")
+            logger.error("Error in create_chat_completion: %s", error_messages)
+            return JSONResponse(
+                {"error": {"message": "Internal proxy error", "type": "proxy_error", "details": error_messages}},
+                status_code=500,
+            )
 
     def remove_instance_endpoint(self, instance_type, instance):
         return

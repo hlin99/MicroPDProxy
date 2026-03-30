@@ -63,7 +63,9 @@ def test_request_exceeds_model_len(mock_query):
     result = sched.schedule(p_cycler, is_prompt=True, request_len=100, max_tokens=50)
     assert result is not None
 
-    result = sched.schedule(d_cycler, is_prompt=False, request_len=131000, max_tokens=100)
+    result = sched.schedule(
+        d_cycler, is_prompt=False, request_len=131000, max_tokens=100
+    )
     assert result is None
 
 
@@ -82,10 +84,16 @@ def test_concurrent_scheduling_thread_safety(mock_query):
             d_cycler = itertools.cycle(decode)
             for _ in range(50):
                 p_node = sched.schedule(
-                    p_cycler, is_prompt=True, request_len=100, max_tokens=50,
+                    p_cycler,
+                    is_prompt=True,
+                    request_len=100,
+                    max_tokens=50,
                 )
                 d_node = sched.schedule(
-                    d_cycler, is_prompt=False, request_len=100, max_tokens=50,
+                    d_cycler,
+                    is_prompt=False,
+                    request_len=100,
+                    max_tokens=50,
                 )
                 assert p_node is not None, f"thread {thread_id}: prefill returned None"
                 assert d_node is not None, f"thread {thread_id}: decode returned None"
@@ -95,8 +103,7 @@ def test_concurrent_scheduling_thread_safety(mock_query):
             errors.append(exc)
 
     threads = [
-        threading.Thread(target=schedule_and_complete, args=(tid,))
-        for tid in range(8)
+        threading.Thread(target=schedule_and_complete, args=(tid,)) for tid in range(8)
     ]
     for thr in threads:
         thr.start()
@@ -111,7 +118,7 @@ def test_concurrent_scheduling_thread_safety(mock_query):
 
 @patch("MicroPDProxyServer.query_instance_model_len", return_value=[131072, 131072])
 def test_decode_tiebreak_by_kv_utilization(mock_query):
-    """When decode bs_counters tie, scheduler should pick the node with lower KV utilization."""
+
     prefill = ["p1:1", "p2:2"]
     decode = ["d1:1", "d2:2"]
     sched = LoadBalancedScheduler(prefill, decode)
@@ -132,5 +139,7 @@ def test_decode_tiebreak_by_kv_utilization(mock_query):
     # Now bs_counters are both 0 (tied).  kv_utils differ if not reset.
     # With bs=0 the scheduler takes the first candidate with bs==0,
     # which is index-order.  Verify the call succeeds and returns a valid node.
-    next_node = sched.schedule(d_cycler, is_prompt=False, request_len=100, max_tokens=50)
+    next_node = sched.schedule(
+        d_cycler, is_prompt=False, request_len=100, max_tokens=50
+    )
     assert next_node in decode
