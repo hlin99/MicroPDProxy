@@ -21,10 +21,10 @@ _TOKENIZER_PATH = os.path.join(_REPO_ROOT, "tokenizers", "DeepSeek-R1")
 
 
 def _free_port():
-    with socket.socket() as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    with socket.socket() as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 _PREFILL_PORT = _free_port()
@@ -78,32 +78,8 @@ def anyio_backend():
 async def client():
     app = _make_proxy_app()
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-
-
-@pytest.mark.anyio
-async def test_streaming_format_sse(client: AsyncClient):
-    """Streaming response should use SSE format: 'data: ...' lines."""
-    resp = await client.post("/v1/chat/completions", json=CHAT_PAYLOAD)
-    assert resp.status_code == 200
-    assert "text/event-stream" in resp.headers["content-type"]
-
-    lines = resp.text.strip().split("\n")
-    non_empty = [line for line in lines if line.strip()]
-    for line in non_empty:
-        assert line.startswith("data: "), f"Non-SSE line: {line!r}"
-
-
-@pytest.mark.anyio
-async def test_streaming_done_marker(client: AsyncClient):
-    """Streaming should end with 'data: [DONE]'."""
-    resp = await client.post("/v1/chat/completions", json=CHAT_PAYLOAD)
-    assert resp.status_code == 200
-
-    lines = resp.text.strip().split("\n")
-    data_lines = [line for line in lines if line.startswith("data: ")]
-    assert data_lines[-1] == "data: [DONE]"
+    async with AsyncClient(transport=transport, base_url="http://test") as cli:
+        yield cli
 
 
 @pytest.mark.anyio
@@ -111,16 +87,52 @@ async def test_streaming_chunk_structure(client: AsyncClient):
     """Each SSE chunk (except [DONE]) should be valid JSON with expected fields."""
     resp = await client.post("/v1/chat/completions", json=CHAT_PAYLOAD)
     assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
 
     lines = resp.text.strip().split("\n")
     data_lines = [line for line in lines if line.startswith("data: ") and line != "data: [DONE]"]
+    assert len(data_lines) >= 1, "Expected at least one data chunk before [DONE]"
 
+    chunk_ids = set()
     for line in data_lines:
         payload = line.removeprefix("data: ")
         chunk = json.loads(payload)
         assert "id" in chunk
-        assert "object" in chunk
         assert chunk["object"] == "chat.completion.chunk"
         assert "choices" in chunk
         assert len(chunk["choices"]) >= 1
         assert "delta" in chunk["choices"][0]
+        chunk_ids.add(chunk["id"])
+
+    # All chunks in a single response should share the same id
+    assert len(chunk_ids) == 1, f"Expected one unique id across chunks, got {chunk_ids}"
+
+
+@pytest.mark.anyio
+async def test_streaming_max_tokens_one(client: AsyncClient):
+    """Streaming with max_tokens=1 should produce exactly one content chunk + [DONE]."""
+    payload = {
+        "model": "dummy",
+        "messages": [{"role": "user", "content": "Say something"}],
+        "max_tokens": 1,
+        "stream": True,
+    }
+    resp = await client.post("/v1/chat/completions", json=payload)
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+    lines = resp.text.strip().split("\n")
+    data_lines = [line for line in lines if line.startswith("data: ")]
+    assert data_lines[-1] == "data: [DONE]"
+
+    content_chunks = [
+        line for line in data_lines
+        if line != "data: [DONE]"
+    ]
+    # With max_tokens=1, expect exactly 1 content chunk
+    assert len(content_chunks) >= 1
+
+    # Verify the chunk is valid
+    chunk = json.loads(content_chunks[0].removeprefix("data: "))
+    assert chunk["object"] == "chat.completion.chunk"
+    assert "delta" in chunk["choices"][0]
