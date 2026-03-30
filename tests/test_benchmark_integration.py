@@ -1,11 +1,11 @@
 """Integration test that mimics vllm bench serve against proxy + dummy nodes.
 
 Topology (matches benchmarks/run_benchmark.sh):
-  - 2 prefill nodes  (ports 18100-18101)
-  - 16 decode nodes  (ports 18200-18215)
-  - 1 proxy          (port 18868)
+  - 2 prefill nodes  (ports 8100-8101)
+  - 16 decode nodes  (ports 8200-8215)
+  - 1 proxy          (port 8868)
 
-Uses higher port range (18xxx) to avoid clashing with manual runs.
+Uses standard port range matching benchmarks/run_benchmark.sh.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ import uvicorn
 
 NUM_PREFILL = 2
 NUM_DECODE = 16
-PREFILL_BASE = 18100
-DECODE_BASE = 18200
-PROXY_PORT = 18868
+PREFILL_BASE = 8100
+DECODE_BASE = 8200
+PROXY_PORT = 8868
 
 MODEL_PATH = "tokenizers/DeepSeek-R1"
 
