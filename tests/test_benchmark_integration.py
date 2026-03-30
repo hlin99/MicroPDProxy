@@ -117,7 +117,7 @@ def test_models_endpoint(cluster):
         r = c.get("/v1/models")
         assert r.status_code == 200
         data = r.json()
-        assert len(data) > 0
+        assert "data" in data and len(data["data"]) > 0
 
 
 def test_chat_completions(cluster):
