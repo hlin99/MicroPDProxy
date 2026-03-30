@@ -38,32 +38,8 @@ Continue with task two described below. This is the current active implementatio
 
 ---
 
-## 3. ~~Task one~~ (DONE)
 
-> The content in `core/` has already been validated on real hardware. The code is considered basically correct.
->
-> So the first task was:
->
-> - without modifying core business logic,
-> - debug `dummy_nodes`,
-> - and make `dummy_nodes` work correctly under the following proxy server configurations:
->
-> ### Required configurations
->
-> - `bash xpyd_start_proxy.sh 1 2 1`
-> - `bash xpyd_start_proxy.sh 2 2 1`
-> - `bash xpyd_start_proxy.sh 1 2 2`
-> - `bash xpyd_start_proxy.sh 1 2 4`
-> - `bash xpyd_start_proxy.sh 1 2 8`
-> - `bash xpyd_start_proxy.sh 2 2 2`
-> - `bash xpyd_start_proxy.sh 2 4 1`
-> - `bash xpyd_start_proxy.sh 2 4 2`
->
-> After debugging, submit PRs.
-
----
-
-## 4. Task two details
+## 3. Task two details
 
 ### Goal
 
@@ -105,7 +81,7 @@ Since the command is long, short aliases such as `-pn`, `-pt`, etc. should also 
 
 ---
 
-## 5. Validation rules
+## 4. Validation rules
 
 The script must validate the input arguments.
 
@@ -127,7 +103,7 @@ nodes <= IP list length
 
 ---
 
-## 6. Topology and mapping rules
+## 5. Topology and mapping rules
 
 ### 5.1 Basic definitions
 
@@ -156,7 +132,7 @@ nodes <= IP list length
 
 ---
 
-## 7. Mapping rules under different TP / world-size relationships
+## 6. Mapping rules under different TP / world-size relationships
 
 ### Case 1: `tp_size <= world_size_per_node`
 
@@ -191,7 +167,7 @@ nodes.
 
 ---
 
-## 8. Implementation constraints
+## 7. Implementation constraints
 
 - Only modify `core/xpyd_start_proxy.sh`.
 - Do not modify other core business logic files.
@@ -202,7 +178,7 @@ nodes.
 
 ---
 
-## 9. Testing requirements
+## 8. Testing requirements
 
 ### 8.1 Same testing requirement as task one
 
@@ -230,3 +206,28 @@ The script should fail clearly and handle invalid input gracefully.
 - Exit with non-zero status
 - Print a clear and understandable error message
 - Do not generate partial / ambiguous proxy arguments
+
+---
+
+## 3. ~~Task one~~ (DONE)
+
+> The content in `core/` has already been validated on real hardware. The code is considered basically correct.
+>
+> So the first task was:
+>
+> - without modifying core business logic,
+> - debug `dummy_nodes`,
+> - and make `dummy_nodes` work correctly under the following proxy server configurations:
+>
+> ### Required configurations
+>
+> - `bash xpyd_start_proxy.sh 1 2 1`
+> - `bash xpyd_start_proxy.sh 2 2 1`
+> - `bash xpyd_start_proxy.sh 1 2 2`
+> - `bash xpyd_start_proxy.sh 1 2 4`
+> - `bash xpyd_start_proxy.sh 1 2 8`
+> - `bash xpyd_start_proxy.sh 2 2 2`
+> - `bash xpyd_start_proxy.sh 2 4 1`
+> - `bash xpyd_start_proxy.sh 2 4 2`
+>
+> After debugging, submit PRs.
