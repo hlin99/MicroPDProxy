@@ -5,19 +5,86 @@ import json
 import socket
 import threading
 import time
+from unittest.mock import MagicMock
 
 import pytest
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from httpx import ASGITransport, AsyncClient
 from MicroPDProxyServer import (
     LoadBalancedScheduler,
+    Proxy,
     RoundRobinSchedulingPolicy,
-    create_app,
-    parse_instance_spec,
 )
 
 from dummy_nodes.decode_node import app as decode_app
 from dummy_nodes.prefill_node import app as prefill_app
+
+# ---------------------------------------------------------------------------
+# Local helpers — create_app and parse_instance_spec
+# These mirror what the proxy server does internally.
+# ---------------------------------------------------------------------------
+
+
+def parse_instance_spec(spec: str) -> list:
+    """Parse an instance specification string into a list of host:port strings.
+
+    Supported formats:
+        - "host:port"           -> ["host:port"]
+        - "host:start-end"      -> ["host:start", ..., "host:end"]
+        - "host:p1,p2,p3"       -> ["host:p1", "host:p2", "host:p3"]
+
+    Raises ValueError if the spec does not contain a port.
+    """
+    if ":" not in spec:
+        raise ValueError(f"Invalid instance spec (no port): {spec}")
+
+    host, port_part = spec.rsplit(":", 1)
+
+    if "-" in port_part:
+        start, end = port_part.split("-", 1)
+        return [f"{host}:{p}" for p in range(int(start), int(end) + 1)]
+    elif "," in port_part:
+        return [f"{host}:{p}" for p in port_part.split(",")]
+    else:
+        return [f"{host}:{port_part}"]
+
+
+def create_app(
+    prefill_instances: list | None = None,
+    decode_instances: list | None = None,
+    model: str = "dummy",
+    scheduling_policy=None,
+    generator_on_p_node: bool = False,
+) -> FastAPI:
+    """Create a FastAPI application with a Proxy router for testing."""
+    proxy = Proxy(
+        prefill_instances=prefill_instances or [],
+        decode_instances=decode_instances or [],
+        model=model,
+        scheduling_policy=(
+            scheduling_policy(prefill_instances or [], decode_instances or [])
+            if scheduling_policy is not None
+            else RoundRobinSchedulingPolicy()
+        ),
+        generator_on_p_node=generator_on_p_node,
+    )
+    # The Proxy tokenizer may fail with "dummy" model; mock it for tests
+    proxy.tokenizer = MagicMock()
+    proxy.tokenizer.return_value = {"input_ids": [1, 2, 3]}
+
+    app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(proxy.router)
+    return app
+
 
 # ---------------------------------------------------------------------------
 # Helpers – start real dummy-node servers for the proxy to talk to
@@ -218,17 +285,11 @@ def test_round_robin_scheduling():
 
 
 def test_round_robin_schedule_with_full_signature():
-    """Verify RoundRobin.schedule() accepts the same args Proxy.schedule() passes.
-
-    Regression test for #7: Proxy.schedule() calls
-    scheduling_policy.schedule(cycler, is_prompt, request_len, max_tokens)
-    but RoundRobinSchedulingPolicy only accepted (cycler, request, max_tokens).
-    """
+    """Verify RoundRobin.schedule() accepts the same args Proxy.schedule() passes."""
     policy = RoundRobinSchedulingPolicy()
     instances = ["a:1", "b:2"]
     cycler = itertools.cycle(instances)
 
-    # Call with positional args — the exact way Proxy.schedule() invokes it
     r1 = policy.schedule(cycler, True, 100, 1)
     r2 = policy.schedule(cycler, False, 100, 50)
     assert r1 == "a:1"
@@ -236,13 +297,8 @@ def test_round_robin_schedule_with_full_signature():
 
 
 def test_round_robin_schedule_completion_exists():
-    """Verify RoundRobin has schedule_completion() (no-op from base class).
-
-    Regression test for #8: Proxy.schedule_completion() calls
-    scheduling_policy.schedule_completion() which was missing on RoundRobin.
-    """
+    """Verify RoundRobin has schedule_completion() (no-op from base class)."""
     policy = RoundRobinSchedulingPolicy()
-    # Should not raise AttributeError
     policy.schedule_completion(
         prefill_instance="a:1", decode_instance=None, req_len=100
     )
@@ -259,16 +315,13 @@ def test_load_balanced_scheduling():
     p_cycler = itertools.cycle(prefill)
     d_cycler = itertools.cycle(decode)
 
-    # First prefill request goes to first instance (both at 0)
     r1 = policy.schedule(p_cycler, is_prompt=True, request_len=100)
     assert r1 in prefill
 
-    # Second prefill request should go to the other (less loaded) instance
     r2 = policy.schedule(p_cycler, is_prompt=True, request_len=100)
     assert r2 in prefill
     assert r2 != r1
 
-    # Decode scheduling similarly distributes
     d1 = policy.schedule(d_cycler, is_prompt=False, request_len=50)
     assert d1 in decode
     d2 = policy.schedule(d_cycler, is_prompt=False, request_len=50)
