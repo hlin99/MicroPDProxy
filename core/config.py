@@ -4,17 +4,20 @@
 Provides ``ProxyConfig`` as the single source of truth for all proxy
 parameters.  Values are resolved in precedence order:
 
-    CLI args  >  environment variables  >  defaults
+    CLI args  >  environment variables  >  YAML config  >  defaults
 
-``ProxyConfig.from_args()`` bridges the existing argparse layer.
+``ProxyConfig.from_args()`` bridges the existing argparse layer and
+optionally merges a YAML config file when ``--config`` is provided.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import os
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
@@ -86,24 +89,88 @@ class ProxyConfig(BaseModel):
         return self
 
     # ------------------------------------------------------------------
+    # YAML loading
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def load_yaml(path: str | Path) -> Dict[str, Any]:
+        """Load and return a YAML config file as a dict.
+
+        Raises ``FileNotFoundError`` if the file does not exist and
+        ``ValueError`` for invalid YAML content.
+        """
+        config_path = Path(path)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+        with open(config_path) as fh:
+            try:
+                data = yaml.safe_load(fh)
+            except yaml.YAMLError as exc:
+                raise ValueError(f"Malformed YAML in {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"YAML config must be a mapping, got {type(data).__name__}"
+            )
+        return data
+
+    # ------------------------------------------------------------------
     # Construction helpers
     # ------------------------------------------------------------------
 
     @classmethod
     def from_args(cls, args) -> "ProxyConfig":
-        """Build a ``ProxyConfig`` from an ``argparse.Namespace``.
+        """Build a ``ProxyConfig`` from an ``argparse.Namespace``,
+        optionally merging a YAML config file.
 
-        Environment variables ``ADMIN_API_KEY`` / ``OPENAI_API_KEY`` are
-        used as fallbacks when the corresponding values are not supplied
-        via CLI.
+        Precedence: CLI args > environment variables > YAML > defaults.
         """
-        return cls(
-            model=args.model,
-            prefill=getattr(args, "prefill", None),
-            decode=getattr(args, "decode", None),
-            port=getattr(args, "port", 8000),
-            generator_on_p_node=getattr(args, "generator_on_p_node", False),
-            roundrobin=getattr(args, "roundrobin", False),
-            admin_api_key=os.environ.get("ADMIN_API_KEY"),
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        # Argparse defaults — used to detect whether user explicitly set a value.
+        _arg_defaults: Dict[str, Any] = {
+            "model": None,
+            "prefill": None,
+            "decode": None,
+            "port": 8000,
+            "generator_on_p_node": False,
+            "roundrobin": False,
+        }
+
+        # 1. Load YAML base (if provided)
+        yaml_data: Dict[str, Any] = {}
+        config_path = getattr(args, "config", None)
+        if config_path:
+            yaml_data = cls.load_yaml(config_path)
+
+        # 2. Build merged dict: YAML first, then CLI overrides
+        merged: Dict[str, Any] = {}
+        for field_name, default in _arg_defaults.items():
+            cli_value = getattr(args, field_name, default)
+            # CLI value is considered "set" if it differs from the
+            # argparse default (i.e. the user explicitly passed it).
+            if cli_value != default:
+                merged[field_name] = cli_value
+            elif field_name in yaml_data:
+                merged[field_name] = yaml_data[field_name]
+            # If neither CLI nor YAML provided a value, omit from merged
+            # so Pydantic uses its own default (or raises for required fields).
+
+        # scheduling field from YAML (not a ProxyConfig field directly)
+        scheduling = yaml_data.pop("scheduling", None)
+        if scheduling is not None and "roundrobin" not in merged:
+            merged["roundrobin"] = scheduling == "roundrobin"
+
+        # 3. Environment variables override YAML for api keys
+        admin_key = os.environ.get("ADMIN_API_KEY") or yaml_data.get(
+            "admin_api_key"
         )
+        openai_key = os.environ.get("OPENAI_API_KEY") or yaml_data.get(
+            "openai_api_key"
+        )
+        # Pop api keys from yaml_data so they don't cause extra-field errors
+        yaml_data.pop("admin_api_key", None)
+        yaml_data.pop("openai_api_key", None)
+        if admin_key:
+            merged.setdefault("admin_api_key", admin_key)
+        if openai_key:
+            merged.setdefault("openai_api_key", openai_key)
+
+        return cls(**merged)
