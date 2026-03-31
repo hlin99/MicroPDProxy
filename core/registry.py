@@ -22,12 +22,17 @@ class InstanceStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
-class CircuitBreakerState(str, Enum):
-    """Circuit breaker state machine states."""
+try:
+    from circuit_breaker import CircuitBreakerState
+except ImportError:
+    import enum
 
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
+    class CircuitBreakerState(str, enum.Enum):  # type: ignore[no-redef]
+        """Circuit breaker state machine states."""
+
+        CLOSED = "closed"
+        OPEN = "open"
+        HALF_OPEN = "half_open"
 
 
 @dataclass
