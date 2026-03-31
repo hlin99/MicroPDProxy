@@ -88,37 +88,77 @@ Support YAML-based configuration as the primary way to pass parameters to the pr
 ### Motivation
 The proxy currently requires many CLI arguments (`--model`, `--prefill`, `--decode`, `--port`, `--generator_on_p_node`, `--roundrobin`, etc.) plus environment variables (`ADMIN_API_KEY`, `OPENAI_API_KEY`). As features grow, this becomes unwieldy. A single YAML config file is easier to manage, version-control, and share.
 
+### YAML Schema
+
+```yaml
+# MicroPDProxy Configuration
+
+# ============================================================
+# Server
+# ============================================================
+model: /path/to/model           # required
+port: 8000                      # default: 8000
+log_level: warning              # debug | info | warning | error
+
+# ============================================================
+# Nodes
+# ============================================================
+# Each node entry is "ip:base_port". The topology parameters
+# (tp_size, dp_size, world_size_per_node) determine how many
+# instances are spawned per node and how ports are assigned.
+#
+# Example: 2 prefill nodes (TP8, DP2) + 2 decode nodes (TP1, DP16)
+prefill:
+  nodes:
+    - "10.0.0.1:8100"
+    - "10.0.0.2:8100"
+  tp_size: 8
+  dp_size: 2
+  world_size_per_node: 8
+
+decode:
+  nodes:
+    - "10.0.0.3:8200"
+    - "10.0.0.4:8200"
+  tp_size: 1
+  dp_size: 16
+  world_size_per_node: 8
+
+# ============================================================
+# Scheduling
+# ============================================================
+scheduling: loadbalanced        # roundrobin | loadbalanced
+generator_on_p_node: false
+
+# ============================================================
+# Auth
+# ============================================================
+admin_api_key: ""               # env: ADMIN_API_KEY
+openai_api_key: ""              # env: OPENAI_API_KEY
+```
+
+The above example expands to:
+- **Prefill**: 2 nodes × (world_size 8 / tp_size 8) = 1 instance per node = 2 prefill instances (DP=2 ✓)
+- **Decode**: 2 nodes × (world_size 8 / tp_size 1) = 8 instances per node = 16 decode instances (DP=16 ✓), ports 8200–8207
+
 ### Scope
 - Add `--config` / `-c` CLI argument that accepts a path to a YAML file
-- Define the YAML schema covering all proxy parameters:
-  ```yaml
-  model: /path/to/model
-  port: 8000
-  prefill:
-    - "10.0.0.1:8001"
-    - "10.0.0.2:8001"
-  decode:
-    - "10.0.0.3:8002"
-    - "10.0.0.4:8002"
-  scheduling: roundrobin  # or "loadbalanced"
-  generator_on_p_node: false
-  admin_api_key: "secret"    # optional, can also be set via env
-  openai_api_key: "sk-..."   # optional, can also be set via env
-  ```
+- Parse YAML and expand topology into final instance address lists using the same rules as `xpyd_start_proxy.sh`
+- Validate: instance format, port range, topology constraints (`tp_size * dp_size == nodes * world_size_per_node`, tp/dp must be powers of two)
 - Precedence order: **CLI args > environment variables > YAML config > defaults**
-- Validate the YAML config with the same rules as CLI args (instance format, port range, at least one decode node, etc.)
-- Clear error messages for invalid YAML (missing required fields, bad format, unknown keys)
+- Clear error messages for invalid YAML (missing required fields, bad format, topology constraint violations)
 - Add `PyYAML` to `requirements.txt`
 
 ### Constraints
 - Existing CLI arguments must continue to work (backward compatible)
-- If both `--config` and individual CLI args are provided, CLI args take precedence for the fields they specify
+- If both `--config` and individual CLI args are provided, CLI args take precedence
 - Must not change any observable proxy behavior
 - All existing tests must continue to pass
 
 ### Testing / verification
-- UT for YAML parsing and validation (valid/invalid configs, precedence rules)
-- UT for error handling (missing file, malformed YAML, unknown keys)
+- UT for YAML parsing, topology expansion, and validation
+- UT for error handling (missing file, malformed YAML, invalid topology)
+- UT for precedence (CLI overrides YAML)
 - Integration test: proxy starts correctly from a YAML config file
 - All existing tests still pass
 - CI green
