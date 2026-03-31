@@ -20,10 +20,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-try:
-    from .topology import expand_topology
-except ImportError:
-    from topology import expand_topology
+from .topology import expand_topology
 
 
 class ProxyConfig(BaseModel):

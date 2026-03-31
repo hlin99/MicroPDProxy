@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
 import time
 from typing import List, Set
 
@@ -59,12 +58,14 @@ class NodeDiscovery:
 
     @staticmethod
     def _on_probe_done(task: asyncio.Task) -> None:
-        """Exit the process if the probe loop ended with a timeout."""
+        """Stop the event loop if the probe loop ended with a timeout."""
         if task.cancelled():
             return
         exc = task.exception()
         if isinstance(exc, DiscoveryTimeout):
-            sys.exit(1)
+            logger.critical("Discovery failed: %s", exc)
+            loop = asyncio.get_event_loop()
+            loop.stop()
 
     async def stop(self):
         """Cancel the background probe task."""
