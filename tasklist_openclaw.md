@@ -45,7 +45,78 @@ Add observability to the proxy via a Prometheus-compatible metrics endpoint.
 
 ---
 
-## Task 4 (IN PROGRESS)
+## Task 7 (PLANNED)
+
+### Goal
+Improve proxy resilience with health checks, failover, and request retry.
+
+### Scope
+
+#### 7a: Backend health check
+- Periodically ping all prefill/decode backend nodes (e.g. every 10s)
+- Automatically remove unhealthy nodes from the active pool
+- Re-add nodes when they recover
+- Expose health status in `/status` endpoint
+
+#### 7b: Request failover
+- When a request to a backend node fails (connection error, timeout), automatically retry on the next available node
+- Configurable retry count and timeout via `core/config.py` (from Task 6)
+- Do not retry on client errors (4xx)
+
+#### 7c: Configurable scheduling policy
+- Allow selecting scheduling policy via config (`roundrobin` or `loadbalanced`)
+- Extensible for future scheduling strategies
+
+### Constraints
+- Must not break existing topology matrix tests
+- All new behavior must be configurable and off by default for backward compatibility
+- Add UT for health check, failover, and scheduling selection
+
+### Testing / verification
+- Health check correctly detects and removes dead nodes
+- Failover retries on next node when backend fails
+- Scheduling policy selectable via config
+- CI green
+
+---
+
+## Task 6 (PLANNED)
+
+### Goal
+Introduce `core/config.py` as the single source of truth for all proxy configuration — CLI arguments, environment variables, defaults, and validation.
+
+### Scope
+- Create `core/config.py` with a Pydantic `BaseSettings` model (or similar) that defines all proxy parameters:
+  - `model` (str, required)
+  - `prefill` (list of host:port strings, optional)
+  - `decode` (list of host:port strings, required, at least one)
+  - `port` (int, default 8000, valid range 1-65535)
+  - `generator_on_p_node` (bool, default false)
+  - `roundrobin` (bool, default false)
+  - `admin_api_key` (str, optional, from env `ADMIN_API_KEY`)
+  - `openai_api_key` (str, optional, from env `OPENAI_API_KEY`)
+- Centralize all validation currently in `validate_parsed_serve_args` and `validate_instances`:
+  - Instance format validation (`host:port`)
+  - Port range check
+  - At least one decode node required
+- Provide clear error messages for invalid configuration
+- Replace `argparse.Namespace` usage in `ProxyServer.__init__` with the new config object
+- Keep CLI argument parsing as a thin layer that feeds into the config model
+
+### Constraints
+- Must not change any observable proxy behavior
+- All existing tests must continue to pass
+- Environment variable bindings must be backward compatible
+- `core/MicroPDProxyServer.py` should import and use the config object instead of raw `args`
+
+### Testing / verification
+- UT for config validation (valid/invalid inputs, defaults, env overrides)
+- All existing integration / benchmark tests still pass
+- CI green
+
+---
+
+## Task 4 (DONE)
 
 ### Goal
 Refactor the scheduler code in `core/MicroPDProxyServer.py` into a clean module structure under `core/scheduler/`.
