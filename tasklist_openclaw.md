@@ -45,25 +45,25 @@ Add observability to the proxy via a Prometheus-compatible metrics endpoint.
 
 ---
 
-## Task 7 (PLANNED)
+## Task 8 (PLANNED)
 
 ### Goal
 Improve proxy resilience with health checks, failover, and request retry.
 
 ### Scope
 
-#### 7a: Backend health check
+#### 8a: Backend health check
 - Periodically ping all prefill/decode backend nodes (e.g. every 10s)
 - Automatically remove unhealthy nodes from the active pool
 - Re-add nodes when they recover
 - Expose health status in `/status` endpoint
 
-#### 7b: Request failover
+#### 8b: Request failover
 - When a request to a backend node fails (connection error, timeout), automatically retry on the next available node
 - Configurable retry count and timeout via `core/config.py` (from Task 6)
 - Do not retry on client errors (4xx)
 
-#### 7c: Configurable scheduling policy
+#### 8c: Configurable scheduling policy
 - Allow selecting scheduling policy via config (`roundrobin` or `loadbalanced`)
 - Extensible for future scheduling strategies
 
@@ -76,6 +76,51 @@ Improve proxy resilience with health checks, failover, and request retry.
 - Health check correctly detects and removes dead nodes
 - Failover retries on next node when backend fails
 - Scheduling policy selectable via config
+- CI green
+
+---
+
+## Task 7 (PLANNED)
+
+### Goal
+Support YAML-based configuration as the primary way to pass parameters to the proxy, replacing the growing list of CLI arguments.
+
+### Motivation
+The proxy currently requires many CLI arguments (`--model`, `--prefill`, `--decode`, `--port`, `--generator_on_p_node`, `--roundrobin`, etc.) plus environment variables (`ADMIN_API_KEY`, `OPENAI_API_KEY`). As features grow, this becomes unwieldy. A single YAML config file is easier to manage, version-control, and share.
+
+### Scope
+- Add `--config` / `-c` CLI argument that accepts a path to a YAML file
+- Define the YAML schema covering all proxy parameters:
+  ```yaml
+  model: /path/to/model
+  port: 8000
+  prefill:
+    - "10.0.0.1:8001"
+    - "10.0.0.2:8001"
+  decode:
+    - "10.0.0.3:8002"
+    - "10.0.0.4:8002"
+  scheduling: roundrobin  # or "loadbalanced"
+  generator_on_p_node: false
+  admin_api_key: "secret"    # optional, can also be set via env
+  openai_api_key: "sk-..."   # optional, can also be set via env
+  ```
+- Precedence order: **CLI args > environment variables > YAML config > defaults**
+- Validate the YAML config with the same rules as CLI args (instance format, port range, at least one decode node, etc.)
+- Clear error messages for invalid YAML (missing required fields, bad format, unknown keys)
+- Add `PyYAML` to `requirements.txt`
+
+### Constraints
+- Existing CLI arguments must continue to work (backward compatible)
+- If both `--config` and individual CLI args are provided, CLI args take precedence for the fields they specify
+- Must not change any observable proxy behavior
+- All existing tests must continue to pass
+
+### Testing / verification
+- UT for YAML parsing and validation (valid/invalid configs, precedence rules)
+- UT for error handling (missing file, malformed YAML, unknown keys)
+- Integration test: proxy starts correctly from a YAML config file
+- All existing tests still pass
 - CI green
 
 ---
