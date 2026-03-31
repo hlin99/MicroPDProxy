@@ -893,15 +893,17 @@ class ProxyServer:
             timeout_duration_seconds=cb_cfg.timeout_duration_seconds,
             window_duration_seconds=cb_cfg.window_duration_seconds,
         )
-        _registered: set[str] = set()
+        _registered_prefill: set[str] = set()
+        _registered_decode: set[str] = set()
         for addr in config.prefill:
-            if addr not in _registered:
+            if addr not in _registered_prefill:
                 self.registry.add("prefill", addr)
-                _registered.add(addr)
+                _registered_prefill.add(addr)
         for addr in config.decode:
-            if addr not in _registered:
+            if addr not in _registered_decode:
                 self.registry.add("decode", addr)
-                _registered.add(addr)
+                _registered_decode.add(addr)
+        _registered = _registered_prefill | _registered_decode
 
         # Create health monitor if enabled
         self.health_monitor = None
