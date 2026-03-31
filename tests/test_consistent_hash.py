@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for ConsistentHashPolicy."""
 
+import itertools
+from unittest.mock import patch
+
 from scheduler.consistent_hash import ConsistentHashPolicy
 
 
@@ -65,3 +68,52 @@ class TestConsistentHashPolicy:
         r1 = policy.select(user="alice", client_ip="1.2.3.4")
         r2 = policy.select(user="alice", client_ip="9.9.9.9")
         assert r1 == r2
+
+    def test_schedule_with_request_context(self):
+        """schedule() passes request context kwargs to select()."""
+        policy = ConsistentHashPolicy(workers=["w1", "w2", "w3"])
+        cycler = itertools.cycle(["w1", "w2", "w3"])
+        # schedule with header should be consistent
+        r1 = policy.schedule(cycler, header="sess-X")
+        r2 = policy.schedule(cycler, header="sess-X")
+        assert r1 == r2
+        # schedule with user
+        r3 = policy.schedule(cycler, user="bob")
+        r4 = policy.schedule(cycler, user="bob")
+        assert r3 == r4
+        # schedule with client_ip
+        r5 = policy.schedule(cycler, client_ip="10.0.0.1")
+        r6 = policy.schedule(cycler, client_ip="10.0.0.1")
+        assert r5 == r6
+        # header takes priority over user/client_ip in schedule too
+        r7 = policy.schedule(cycler, header="sess-X", user="other", client_ip="9.9.9.9")
+        assert r7 == r1
+
+    def test_hash_collision_handling(self):
+        """Collision in the hash ring is skipped gracefully."""
+        policy = ConsistentHashPolicy(workers=[], virtual_nodes=3)
+
+        # Add first worker normally
+        policy.add_worker("w1")
+        assert len(policy._ring_keys) == 3  # noqa: SLF001
+
+        # Mock _hash so w2's vnodes collide with w1's
+        original_hash = ConsistentHashPolicy._hash
+        w1_hashes = [original_hash("w1", i) for i in range(3)]
+
+        def colliding_hash(key: str, index: int) -> int:
+            if key == "w2":
+                return w1_hashes[index]  # force collision
+            return original_hash(key, index)
+
+        with patch.object(ConsistentHashPolicy, "_hash", staticmethod(colliding_hash)):
+            policy.add_worker("w2")
+
+        # w2 in workers set but all vnodes collided; ring keeps w1 only
+        assert "w2" in policy._workers  # noqa: SLF001
+        assert len(policy._ring_keys) == 3  # noqa: SLF001
+        # All ring entries still point to w1
+        for h in policy._ring_keys:  # noqa: SLF001
+            assert policy._ring_map[h] == "w1"  # noqa: SLF001
+        # select still works (no crash)
+        assert policy.select(session_id="test") == "w1"

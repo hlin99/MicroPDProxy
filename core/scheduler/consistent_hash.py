@@ -34,7 +34,6 @@ class ConsistentHashPolicy(SchedulingPolicy):
     ):
         super().__init__()
         self._virtual_nodes = virtual_nodes
-        self._header_name = header_name
         # Sorted list of (hash_value, worker_addr)
         self._ring_keys: list[int] = []
         self._ring_map: dict[int, str] = {}
