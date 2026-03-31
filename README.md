@@ -206,7 +206,7 @@ PYTHONPATH=core:tests python -m pytest tests/test_metrics.py -v                 
 | [Architecture](docs/architecture.md) | System architecture overview |
 | [API Reference](docs/api_reference.md) | HTTP API endpoints |
 | [Configuration](docs/configuration.md) | YAML config file reference |
-| [CLI](docs/cli.md) | `pdproxy` command-line tool (planned) |
+| [CLI](docs/cli.md) | pdproxy command-line tool (planned) |
 | [Scheduling](docs/scheduling.md) | Load balancing strategies |
 | [Resilience](docs/resilience.md) | Health checks, circuit breakers, retry (planned) |
 | [Metrics](docs/metrics.md) | Prometheus metrics endpoint |
