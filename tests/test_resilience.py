@@ -198,6 +198,76 @@ class TestRetryExecute:
         on_failure.assert_called_once()
         on_success.assert_called_once()
 
+    @pytest.mark.anyio
+    async def test_disabled_single_attempt_success(self):
+        """When enabled=False, exactly one attempt is made (no retry)."""
+        cfg = ResilienceConfig(enabled=False, max_retries=3)
+        handler = ResilienceHandler(cfg)
+        resp = MagicMock(status_code=200)
+        request_fn = AsyncMock(return_value=resp)
+        select_fn = MagicMock(return_value="node-1")
+        on_success = MagicMock()
+        result = await handler.execute(request_fn, select_fn, on_success=on_success)
+        assert result.status_code == 200
+        request_fn.assert_called_once_with("node-1")
+        on_success.assert_called_once_with("node-1", resp)
+
+    @pytest.mark.anyio
+    async def test_disabled_single_attempt_failure(self):
+        """When enabled=False and request fails, no retry is attempted."""
+        cfg = ResilienceConfig(enabled=False, max_retries=3)
+        handler = ResilienceHandler(cfg)
+        resp = MagicMock(status_code=502)
+        request_fn = AsyncMock(return_value=resp)
+        select_fn = MagicMock(return_value="node-1")
+        on_failure = MagicMock()
+        result = await handler.execute(request_fn, select_fn, on_failure=on_failure)
+        assert result.status_code == 502
+        request_fn.assert_called_once_with("node-1")
+        on_failure.assert_called_once_with("node-1", resp, 0)
+
+    @pytest.mark.anyio
+    async def test_select_instance_returns_none(self):
+        """When select_instance_fn returns None during retry, stop retrying."""
+        cfg = ResilienceConfig(enabled=True, max_retries=2, initial_backoff_ms=1)
+        handler = ResilienceHandler(cfg)
+        resp = MagicMock(status_code=502)
+        request_fn = AsyncMock(return_value=resp)
+        call_count = 0
+
+        def select_fn(excluded=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return "node-1"
+            return None
+
+        on_failure = MagicMock()
+        result = await handler.execute(request_fn, select_fn, on_failure=on_failure)
+        assert result.status_code == 502
+        request_fn.assert_called_once_with("node-1")
+
+    @pytest.mark.anyio
+    async def test_select_instance_raises(self):
+        """When select_instance_fn raises during retry, stop retrying."""
+        cfg = ResilienceConfig(enabled=True, max_retries=2, initial_backoff_ms=1)
+        handler = ResilienceHandler(cfg)
+        resp = MagicMock(status_code=502)
+        request_fn = AsyncMock(return_value=resp)
+        call_count = 0
+
+        def select_fn(excluded=None):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return "node-1"
+            raise RuntimeError("No instances available")
+
+        on_failure = MagicMock()
+        result = await handler.execute(request_fn, select_fn, on_failure=on_failure)
+        assert result.status_code == 502
+        request_fn.assert_called_once_with("node-1")
+
 
 # ---------------------------------------------------------------------------
 # Config YAML integration

@@ -90,6 +90,19 @@ class ResilienceHandler:
         on_failure:
             Optional callback ``(instance, response, attempt) -> None``.
         """
+        # When resilience is disabled, perform exactly one attempt.
+        if not self.config.enabled:
+            instance = select_instance_fn(excluded=None)
+            response = await request_fn(instance)
+            status_code = response.status_code
+            if 200 <= status_code < 300:
+                if on_success is not None:
+                    on_success(instance, response)
+            else:
+                if on_failure is not None:
+                    on_failure(instance, response, 0)
+            return response
+
         tried: List[str] = []
         next_instance: Optional[str] = None
 
@@ -124,7 +137,28 @@ class ResilienceHandler:
                     max_ms=self.config.max_backoff_ms,
                     jitter_factor=self.config.jitter_factor,
                 )
-                next_instance = select_instance_fn(excluded=tried)
+                try:
+                    next_instance = select_instance_fn(excluded=tried)
+                except Exception:
+                    logger.warning(
+                        "[RETRY] No alternative instance available after %s "
+                        "returned %d, returning last response",
+                        instance,
+                        status_code,
+                    )
+                    if on_failure is not None:
+                        on_failure(instance, response, attempt)
+                    return response
+                if next_instance is None:
+                    logger.warning(
+                        "[RETRY] No alternative instance available after %s "
+                        "returned %d, returning last response",
+                        instance,
+                        status_code,
+                    )
+                    if on_failure is not None:
+                        on_failure(instance, response, attempt)
+                    return response
                 logger.warning(
                     "[RETRY] %s returned %d, attempt %d/%d, backoff %.0fms, "
                     "retrying on %s",
