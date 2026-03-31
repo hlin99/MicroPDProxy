@@ -140,14 +140,14 @@ Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 
 All commits must use the following identity:
 ```
-git -c user.name="hlin99" -c user.email="tony.lin@intel.com" commit
+git -c user.name="hlin99" -c user.email="tony.lin@intel.com" commit -s
 ```
 
 Rules:
 - Always use `tony.lin@intel.com` as the commit email
 - Never use the GitHub noreply address (`*@users.noreply.github.com`)
+- Always include `Signed-off-by` trailer (`-s` flag) for DCO compliance
 - Never add `Co-authored-by` trailers to commit messages
-- Never add `Signed-off-by` or other identity trailers
 
 ### PR Description
 
