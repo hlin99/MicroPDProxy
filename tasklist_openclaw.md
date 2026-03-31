@@ -47,7 +47,7 @@ Improve proxy resilience with health monitoring and failover.
 
 ---
 
-## Task 8 (IN PROGRESS)
+## Task 8 (PLANNED)
 
 ### Goal
 Package the proxy as an installable CLI tool (`pdproxy`) with startup node discovery.
@@ -105,7 +105,7 @@ startup:
 
 ---
 
-## Task 7 (DONE)
+## Task 7 (IN PROGRESS)
 
 ### Goal
 Support YAML-based configuration as the primary way to pass parameters to the proxy, replacing the growing list of CLI arguments.
