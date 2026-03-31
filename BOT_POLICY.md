@@ -135,14 +135,24 @@ Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 
 ### Active PR Maintenance
 
-When the bot has open (non-draft) PRs with `CHANGES_REQUESTED` reviews:
+The author bot runs a maintenance cron that triggers every **5 minutes** when
+there are open (non-draft) PRs authored by the bot. On each trigger it must:
 
-- **Every 5 minutes**, check for new review comments on open PRs.
-- Read and address each comment: fix the code, push a new commit.
-- After pushing the fix, **re-request review** from the reviewer(s) who
-  requested changes (via the GitHub API `POST
-  /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`).
-- Continue this cycle until the PR is approved or closed.
+1. **Update branch** — if the PR branch is behind `main`, update it (merge
+   `main` into the branch). PRs must always be up-to-date with `main`. Do
+   **not** rebase or force-push.
+2. **Review comment check** — read any new `CHANGES_REQUESTED` reviews or
+   inline comments. For each piece of feedback:
+   - Fix the code accordingly.
+   - Run pre-commit, tests, and linters locally before pushing.
+   - Push a new commit (not amend/force-push over the reviewed commit).
+3. **Re-request review** — after pushing fixes, re-request review from the
+   reviewer(s) who requested changes (via the GitHub API `POST
+   /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`).
+4. **Repeat** — continue this cycle until the PR is approved or closed.
+
+When there are no open bot-authored PRs, the maintenance cron does not need to
+run.
 
 ---
 
