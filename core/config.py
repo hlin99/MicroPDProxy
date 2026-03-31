@@ -140,7 +140,11 @@ class ProxyConfig(BaseModel):
         if config_path:
             yaml_data = cls.load_yaml(config_path)
 
-        # 2. Build merged dict: YAML first, then CLI overrides
+        # 2. Build merged dict: YAML first, then CLI overrides.
+        #    NOTE: argparse cannot distinguish "user explicitly passed the
+        #    default" from "argparse filled in the default". So if a user
+        #    passes e.g. `--port 8000` and the YAML has `port: 9000`, the
+        #    YAML value wins. This is a known argparse limitation.
         merged: Dict[str, Any] = {}
         for field_name, default in _arg_defaults.items():
             cli_value = getattr(args, field_name, default)
@@ -167,12 +171,23 @@ class ProxyConfig(BaseModel):
             )
 
         # scheduling → roundrobin mapping
-        if scheduling is not None and "roundrobin" not in merged:
-            merged["roundrobin"] = scheduling == "roundrobin"
+        _VALID_SCHEDULING = {"roundrobin", "loadbalanced"}
+        if scheduling is not None:
+            if scheduling not in _VALID_SCHEDULING:
+                raise ValueError(
+                    f"Invalid scheduling value {scheduling!r}; "
+                    f"expected one of {sorted(_VALID_SCHEDULING)}"
+                )
+            if "roundrobin" not in merged:
+                merged["roundrobin"] = scheduling == "roundrobin"
 
-        # 3. Environment variables override YAML for api keys
-        admin_key = os.environ.get("ADMIN_API_KEY") or admin_api_key_yaml
-        openai_key = os.environ.get("OPENAI_API_KEY") or openai_api_key_yaml
+        # 3. Environment variables override YAML for api keys.
+        #    Use `is not None` so an explicit empty-string env var
+        #    still takes precedence over the YAML value.
+        admin_env = os.environ.get("ADMIN_API_KEY")
+        admin_key = admin_env if admin_env is not None else admin_api_key_yaml
+        openai_env = os.environ.get("OPENAI_API_KEY")
+        openai_key = openai_env if openai_env is not None else openai_api_key_yaml
         if admin_key:
             merged.setdefault("admin_api_key", admin_key)
         if openai_key:

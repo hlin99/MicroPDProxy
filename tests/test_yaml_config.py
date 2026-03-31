@@ -270,3 +270,35 @@ class TestMissingModel:
         args = _make_args(config=str(p))
         with pytest.raises(ValueError, match="Unknown keys"):
             ProxyConfig.from_args(args)
+
+    def test_invalid_scheduling_value_rejected(self, tmp_yaml):
+        p = tmp_yaml(
+            """\
+            model: /yaml/model
+            decode:
+              - "10.0.0.1:8000"
+            scheduling: typo
+            """
+        )
+        args = _make_args(config=str(p))
+        with pytest.raises(ValueError, match="Invalid scheduling value"):
+            ProxyConfig.from_args(args)
+
+    def test_empty_env_var_overrides_yaml(self, tmp_yaml):
+        """An explicitly set empty-string env var should override YAML."""
+        p = tmp_yaml(
+            """\
+            model: /yaml/model
+            decode:
+              - "10.0.0.1:8000"
+            admin_api_key: yaml-key
+            """
+        )
+        args = _make_args(config=str(p))
+        env = {k: v for k, v in os.environ.items() if k != "ADMIN_API_KEY"}
+        env["ADMIN_API_KEY"] = ""
+        with patch.dict(os.environ, env, clear=True):
+            cfg = ProxyConfig.from_args(args)
+        # Empty string is falsy, so admin_api_key should be None
+        # (empty string env var means "unset" effectively)
+        assert cfg.admin_api_key is None
