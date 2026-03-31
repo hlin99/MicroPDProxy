@@ -38,7 +38,7 @@ For each non-draft PR with a new commit:
 
 | Area | Check |
 |---|---|
-| **CI** | All checks must be `completed` + `success`. If any check is pending or failed, submit `COMMENT` (not Approve). |
+| **CI** | CI status does **not** block reviewing — start reviewing immediately. However, CI must be fully green before submitting `APPROVE`. If CI is pending or failed, you may still submit `REQUEST_CHANGES` or `COMMENT`. |
 | **Merge conflicts** | If `mergeable == false`, submit `REQUEST_CHANGES`. |
 | **`core/` changes** | Business logic and API signatures must remain intact. Topology matrix configs `(1,2,1) (2,2,1) (1,2,2) (1,2,4) (1,2,8) (2,2,2) (2,4,1) (2,4,2)` must not be broken. |
 | **Logic errors** | Incorrect conditions, off-by-one, unhandled edge cases. |
@@ -66,6 +66,9 @@ For each non-draft PR with a new commit:
 > by a human maintainer.
 
 This is non-negotiable. Do not call the merge API under any circumstances.
+
+**CI is a merge gate, not a review gate.** A PR cannot be merged until all CI
+checks pass, but reviewers should not wait for CI to start reviewing code.
 
 ### Review Trigger Schedule
 
