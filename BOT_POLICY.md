@@ -136,6 +136,19 @@ Follow conventional commits:
 
 Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 
+### Commit Identity
+
+All commits must use the following identity:
+```
+git -c user.name="hlin99" -c user.email="hlin99@users.noreply.github.com" commit
+```
+
+Rules:
+- Always use the GitHub noreply email (`hlin99@users.noreply.github.com`)
+- Never use any real/personal email address in commits
+- Never add `Co-authored-by` trailers to commit messages
+- Never add `Signed-off-by` or other identity trailers
+
 ### PR Description
 
 - Clearly state **what** changed and **why**.
