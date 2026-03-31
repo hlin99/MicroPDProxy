@@ -80,7 +80,7 @@ Improve proxy resilience with health checks, failover, and request retry.
 
 ---
 
-## Task 7 (PLANNED)
+## Task 7 (IN PROGRESS)
 
 ### Goal
 Support YAML-based configuration as the primary way to pass parameters to the proxy, replacing the growing list of CLI arguments.
@@ -165,7 +165,7 @@ The above example expands to:
 
 ---
 
-## Task 6 (PLANNED)
+## Task 6 (DONE)
 
 ### Goal
 Introduce `core/config.py` as the single source of truth for all proxy configuration — CLI arguments, environment variables, defaults, and validation.
