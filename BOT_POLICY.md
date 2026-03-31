@@ -92,11 +92,13 @@ Bot-authored PRs use the **hlin99** token (the repo owner account).
 ### Branch Rules
 
 - **Never push directly to `main`.** All changes go through a PR.
-- Branch from the latest `main` and **rebase** (not merge) before opening the
-  PR.
+- Branch from the latest `main`. Keep the branch up-to-date by merging `main`
+  into it (not rebasing).
 - **Each PR must be independent** — based on the latest `main`, with no
   dependencies between PRs. Do not stack PRs or branch off other feature
   branches.
+- **Avoid force-push.** Always push new commits. Force-push destroys review
+  history and is only acceptable when a maintainer explicitly requests it.
 - Use descriptive branch names: `fix/issue-12-error-handling`,
   `feat/add-metrics`, `test/concurrent-edge-cases`.
 
@@ -130,7 +132,7 @@ Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 ### Responding to Reviews
 
 - Address all `REQUEST_CHANGES` feedback before requesting re-review.
-- Do not force-push over reviewed commits without notifying the reviewer.
+- Always push new commits to address feedback — do not amend or force-push.
 - Keep PRs focused — one concern per PR.
 
 ### Active PR Maintenance
@@ -139,8 +141,7 @@ The author bot runs a maintenance cron that triggers every **5 minutes** when
 there are open (non-draft) PRs authored by the bot. On each trigger it must:
 
 1. **Update branch** — if the PR branch is behind `main`, update it (merge
-   `main` into the branch). PRs must always be up-to-date with `main`. Do
-   **not** rebase or force-push.
+   `main` into the branch). PRs must always be up-to-date with `main`.
 2. **Review comment check** — read any new `CHANGES_REQUESTED` reviews or
    inline comments. For each piece of feedback:
    - Fix the code accordingly.
@@ -150,6 +151,10 @@ there are open (non-draft) PRs authored by the bot. On each trigger it must:
    reviewer(s) who requested changes (via the GitHub API `POST
    /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`).
 4. **Repeat** — continue this cycle until the PR is approved or closed.
+
+**No force-push.** Force-pushing destroys review context and makes it
+impossible for reviewers to see incremental changes. Always push new commits.
+The only acceptable exception is when a maintainer explicitly requests it.
 
 When there are no open bot-authored PRs, the maintenance cron does not need to
 run.
