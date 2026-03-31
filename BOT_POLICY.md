@@ -38,7 +38,7 @@ For each non-draft PR with a new commit:
 
 | Area | Check |
 |---|---|
-| **CI** | All checks must be `completed` + `success`. If any check is pending or failed, submit `COMMENT` (not Approve). |
+| **CI** | CI status does **not** block reviewing — start reviewing immediately. However, CI must be fully green before submitting `APPROVE`. If CI is pending or failed, you may still submit `REQUEST_CHANGES` or `COMMENT`. |
 | **Merge conflicts** | If `mergeable == false`, submit `REQUEST_CHANGES`. |
 | **`core/` changes** | Business logic and API signatures must remain intact. Topology matrix configs `(1,2,1) (2,2,1) (1,2,2) (1,2,4) (1,2,8) (2,2,2) (2,4,1) (2,4,2)` must not be broken. |
 | **Logic errors** | Incorrect conditions, off-by-one, unhandled edge cases. |
@@ -67,6 +67,9 @@ For each non-draft PR with a new commit:
 
 This is non-negotiable. Do not call the merge API under any circumstances.
 
+**CI is a merge gate, not a review gate.** A PR cannot be merged until all CI
+checks pass, but reviewers should not wait for CI to start reviewing code.
+
 ### Review Trigger Schedule
 
 - **Has open (non-draft) PRs**: check every **5 minutes** for new commits and
@@ -92,11 +95,13 @@ Bot-authored PRs use the **hlin99** token (the repo owner account).
 ### Branch Rules
 
 - **Never push directly to `main`.** All changes go through a PR.
-- Branch from the latest `main` and **rebase** (not merge) before opening the
-  PR.
+- Branch from the latest `main`. Keep the branch up-to-date by merging `main`
+  into it (not rebasing).
 - **Each PR must be independent** — based on the latest `main`, with no
   dependencies between PRs. Do not stack PRs or branch off other feature
   branches.
+- **Avoid force-push.** Always push new commits. Force-push destroys review
+  history and is only acceptable when a maintainer explicitly requests it.
 - Use descriptive branch names: `fix/issue-12-error-handling`,
   `feat/add-metrics`, `test/concurrent-edge-cases`.
 
@@ -130,24 +135,45 @@ Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 ### Responding to Reviews
 
 - Address all `REQUEST_CHANGES` feedback before requesting re-review.
-- Do not force-push over reviewed commits without notifying the reviewer.
+- Always push new commits to address feedback — do not amend or force-push.
 - Keep PRs focused — one concern per PR.
 
 ### Active PR Maintenance
 
-When the bot has open (non-draft) PRs with `CHANGES_REQUESTED` reviews:
+The author bot runs a maintenance cron that triggers every **5 minutes** when
+there are open (non-draft) PRs authored by the bot. On each trigger it must:
 
-- **Every 5 minutes**, check for new review comments on open PRs.
-- Read and address each comment: fix the code, push a new commit.
-- After pushing the fix, **re-request review** from the reviewer(s) who
-  requested changes (via the GitHub API `POST
-  /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`).
-- Continue this cycle until the PR is approved or closed.
+1. **Update branch** — if the PR branch is behind `main`, update it (merge
+   `main` into the branch). PRs must always be up-to-date with `main`.
+2. **CI check** — check CI status on the PR. If any check has failed, examine
+   the failure logs, fix the code, and push a new commit. CI must be fully
+   green. Do not wait for reviewers to point out CI failures — fix them
+   proactively.
+3. **Review comment check** — read any new `CHANGES_REQUESTED` reviews or
+   inline comments. For each piece of feedback:
+   - Fix the code accordingly.
+   - Run pre-commit, tests, and linters locally before pushing.
+   - Push a new commit (not amend/force-push over the reviewed commit).
+4. **Re-request review** — after pushing fixes, re-request review from the
+   reviewer(s) who requested changes (via the GitHub API `POST
+   /repos/{owner}/{repo}/pulls/{number}/requested_reviewers`).
+5. **Repeat** — continue this cycle until the PR is approved or closed.
+
+**No force-push.** Force-pushing destroys review context and makes it
+impossible for reviewers to see incremental changes. Always push new commits.
+The only acceptable exception is when a maintainer explicitly requests it.
+
+When there are no open bot-authored PRs, the maintenance cron does not need to
+run.
 
 ---
 
 ## General
 
+- **English only** — all content on GitHub must be in English. This includes
+  code, comments, commit messages, PR titles/descriptions, review comments,
+  and inline annotations. No Chinese characters allowed anywhere in the repo
+  or on GitHub.
 - **Secrets** — never hardcode tokens or credentials in code, PR descriptions,
   or bot prompts. Read from secure storage at runtime.
 - **Scope** — bots should limit their actions to reviewing code. No issue
