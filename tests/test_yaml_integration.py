@@ -10,19 +10,15 @@ import pytest
 from config import ProxyConfig
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from helpers import _DECODE_PORT, _PREFILL_PORT, _TOKENIZER_PATH
 from httpx import ASGITransport, AsyncClient
 from MicroPDProxyServer import Proxy, RoundRobinSchedulingPolicy
-
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_TOKENIZER_PATH = str(_REPO_ROOT / "tokenizers" / "DeepSeek-R1")
 
 
 @pytest.fixture
 def _ports():
-    """Get the dummy node ports from conftest (already running)."""
-    import conftest
-
-    return conftest._PREFILL_PORT, conftest._DECODE_PORT
+    """Get the dummy node ports (started by helpers module)."""
+    return _PREFILL_PORT, _DECODE_PORT
 
 
 def _make_proxy_from_yaml(yaml_content: str, tmp_path: Path) -> Proxy:
