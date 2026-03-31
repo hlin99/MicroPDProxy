@@ -241,9 +241,9 @@ class ProxyConfig(BaseModel):
         admin_key = admin_env if admin_env is not None else admin_api_key_yaml
         openai_env = os.environ.get("OPENAI_API_KEY")
         openai_key = openai_env if openai_env is not None else openai_api_key_yaml
-        if admin_key:
+        if admin_key is not None:
             merged.setdefault("admin_api_key", admin_key)
-        if openai_key:
+        if openai_key is not None:
             merged.setdefault("openai_api_key", openai_key)
 
         return cls(**merged)

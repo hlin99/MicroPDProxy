@@ -21,6 +21,15 @@ def validate_topology(
     world_size_per_node: int,
 ) -> None:
     """Validate topology parameters. Raises ``ValueError`` on failure."""
+    for name, val in [
+        ("tp_size", tp_size),
+        ("dp_size", dp_size),
+        ("world_size_per_node", world_size_per_node),
+    ]:
+        if not isinstance(val, int):
+            raise ValueError(
+                f"{role} {name} must be an integer, got {type(val).__name__}"
+            )
     if tp_size < 1:
         raise ValueError(f"{role} tp_size must be a positive integer")
     if dp_size < 1:
