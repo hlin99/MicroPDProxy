@@ -214,3 +214,4 @@ PYTHONPATH=core:tests python -m pytest tests/test_metrics.py -v                 
 | [Quick Start](docs/terminal_by_terminal_quickstart.md) | Terminal-by-terminal setup |
 | [One-Click Setup](docs/one_click_dummy_proxy_setup.md) | Quick dummy environment |
 | [Proxy Script](docs/xpyd_start_proxy_usage.md) | xpyd_start_proxy.sh usage |
+| [Contributing](CONTRIBUTING.md) | Contribution guidelines |
