@@ -910,18 +910,23 @@ class ProxyServer:
         config = uvicorn.Config(app,
                                 host="0.0.0.0",
                                 port=self.port,
+                                log_level=self.config.log_level,
                                 loop="uvloop")
         server = uvicorn.Server(config)
         server.run()
 
 
 if __name__ == "__main__":
-    # Todo: allow more config
     parser = argparse.ArgumentParser("vLLM disaggregated proxy server.")
+    parser.add_argument("--config",
+                        "-c",
+                        type=str,
+                        default=None,
+                        help="Path to YAML configuration file")
     parser.add_argument("--model",
                         "-m",
                         type=str,
-                        required=True,
+                        default=None,
                         help="Model name")
 
     parser.add_argument(
@@ -957,6 +962,13 @@ if __name__ == "__main__":
         "--roundrobin",
         action="store_true",
         help="Use Round Robin scheduling for load balancing",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="warning",
+        dest="log_level",
+        help="Log level: debug, info, warning, error (default: warning)",
     )
     args = parser.parse_args()
     config = ProxyConfig.from_args(args)

@@ -397,7 +397,7 @@ def test_retry_routes_to_different_node():
 
 ---
 
-## Task 8 (PLANNED)
+## Task 8 (IN PROGRESS)
 
 ### Goal
 Package the proxy as an installable CLI tool (`pdproxy`) with startup node discovery.
@@ -455,7 +455,7 @@ startup:
 
 ---
 
-## Task 7 (IN PROGRESS)
+## Task 7 (DONE)
 
 ### Goal
 Support YAML-based configuration as the primary way to pass parameters to the proxy, replacing the growing list of CLI arguments.
