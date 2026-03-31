@@ -74,8 +74,8 @@ jobs:
 
       - name: CLI smoke test
         run: |
-          pdproxy --help
-          pdproxy --version
+          xpyd --help
+          xpyd --version
 
       - name: Run tests (installed mode)
         run: |
