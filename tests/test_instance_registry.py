@@ -96,7 +96,7 @@ class TestGetAvailableInstances:
 
     def test_open_circuit_breaker_excluded(self) -> None:
         """Trigger enough failures to open the circuit breaker."""
-        reg = InstanceRegistry()
+        reg = InstanceRegistry(cb_enabled=True)
         reg.add("decode", "10.0.0.1:8200")
         reg.mark_healthy("10.0.0.1:8200")
         # Default failure_threshold is 5
@@ -109,7 +109,7 @@ class TestGetAvailableInstances:
     def test_half_open_circuit_breaker_excluded(self) -> None:
         """Trip breaker then advance time so it becomes HALF_OPEN."""
         t = [0.0]
-        reg = InstanceRegistry(clock=lambda: t[0])
+        reg = InstanceRegistry(clock=lambda: t[0], cb_enabled=True)
         reg.add("decode", "10.0.0.1:8200")
         reg.mark_healthy("10.0.0.1:8200")
 
