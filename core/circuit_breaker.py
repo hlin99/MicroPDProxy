@@ -67,6 +67,7 @@ class CircuitBreaker:
         self._failure_timestamps: deque[float] = deque()
         self._opened_at: float = 0.0
         self._half_open_successes: int = 0
+        self._half_open_pending: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -88,16 +89,19 @@ class CircuitBreaker:
     def allow_request(self) -> bool:
         """Return ``True`` if a request should be sent through this instance.
 
-        * CLOSED  → always allow
-        * OPEN    → deny (caller should route elsewhere)
-        * HALF-OPEN → allow (probe request)
+        * CLOSED    → always allow
+        * OPEN      → deny (caller should route elsewhere)
+        * HALF-OPEN → allow exactly one probe request at a time
         """
         current = self.state  # triggers timeout check
         if current == CircuitState.CLOSED:
             return True
         if current == CircuitState.OPEN:
             return False
-        # HALF-OPEN: allow probe
+        # HALF-OPEN: allow only one concurrent probe request.
+        if self._half_open_pending:
+            return False
+        self._half_open_pending = True
         return True
 
     def record_failure(self) -> None:
@@ -127,8 +131,11 @@ class CircuitBreaker:
             return
 
         if current == CircuitState.CLOSED:
-            # A success in CLOSED state clears the failure window
-            self._failure_timestamps.clear()
+            # In CLOSED state, a success does *not* clear the failure
+            # window.  The sliding window naturally expires old failures.
+            # Clearing on success would mask intermittent-failure patterns
+            # (e.g. 4 failures, 1 success, 4 failures never trips).
+            pass
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -139,11 +146,13 @@ class CircuitBreaker:
         self._opened_at = now
         self._failure_timestamps.clear()
         self._half_open_successes = 0
+        self._half_open_pending = False
 
     def _close(self) -> None:
         self._state = CircuitState.CLOSED
         self._failure_timestamps.clear()
         self._half_open_successes = 0
+        self._half_open_pending = False
 
     def _purge_old_failures(self, now: float) -> None:
         cutoff = now - self.window_duration_seconds

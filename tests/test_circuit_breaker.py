@@ -66,13 +66,20 @@ class TestClosedToOpen:
         cb.record_failure()
         assert cb.allow_request() is False
 
-    def test_success_clears_failure_count(self):
-        cb, clock = _make_cb(failure_threshold=3)
-        cb.record_failure()
-        cb.record_failure()
-        cb.record_success()
-        cb.record_failure()
-        assert cb.state == CircuitState.CLOSED
+    def test_success_does_not_clear_failure_window(self):
+        """A success in CLOSED state must not clear the failure window.
+
+        The sliding window naturally expires old failures.  Clearing on
+        success would mask intermittent-failure patterns (e.g. 4 failures,
+        1 success, 4 more failures within the window never trips despite
+        8/9 requests failing).
+        """
+        cb, clock = _make_cb(failure_threshold=5, window_duration_seconds=60)
+        for _ in range(4):
+            cb.record_failure()
+        cb.record_success()  # should NOT clear the 4 failures
+        cb.record_failure()  # 5th failure in window → trip
+        assert cb.state == CircuitState.OPEN
 
     def test_failures_outside_window_are_ignored(self):
         cb, clock = _make_cb(failure_threshold=3, window_duration_seconds=10)
@@ -111,6 +118,48 @@ class TestOpenToHalfOpen:
         cb.record_failure()
         clock.advance(10)
         assert cb.allow_request() is True
+
+    def test_denies_concurrent_probes_in_half_open(self):
+        """HALF-OPEN must allow exactly one probe at a time."""
+        cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=10)
+        cb.record_failure()
+        cb.record_failure()
+        clock.advance(10)
+
+        assert cb.allow_request() is True  # first probe allowed
+        assert cb.allow_request() is False  # second probe rejected
+        assert cb.allow_request() is False  # still rejected
+
+    def test_probe_slot_resets_after_failure(self):
+        """After a probe failure the breaker re-opens and the probe slot
+        is freed, so the next HALF-OPEN cycle can issue a new probe."""
+        cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=10)
+        cb.record_failure()
+        cb.record_failure()
+        clock.advance(10)
+        assert cb.allow_request() is True  # probe issued
+        cb.record_failure()  # probe fails → OPEN
+        assert cb.state == CircuitState.OPEN
+
+        clock.advance(10)  # back to HALF-OPEN
+        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.allow_request() is True  # new probe allowed
+
+    def test_probe_slot_resets_after_success_close(self):
+        """After successful probes close the circuit, new requests are
+        allowed normally."""
+        cb, clock = _make_cb(
+            failure_threshold=2,
+            success_threshold=1,
+            timeout_duration_seconds=10,
+        )
+        cb.record_failure()
+        cb.record_failure()
+        clock.advance(10)
+        assert cb.allow_request() is True  # probe
+        cb.record_success()  # close circuit
+        assert cb.state == CircuitState.CLOSED
+        assert cb.allow_request() is True  # normal traffic
 
 
 # ── HALF-OPEN → CLOSED ──────────────────────────────────────────────
