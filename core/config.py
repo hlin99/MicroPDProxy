@@ -18,7 +18,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    field_validator,
+    model_validator,
+)
+
+
+class CircuitBreakerConfig(BaseModel):
+    """Configuration for the per-instance circuit breaker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    failure_threshold: int = 5
+    success_threshold: int = 2
+    timeout_duration_seconds: int = 30
+    window_duration_seconds: int = 60
 
 try:
     from .topology import expand_topology
@@ -53,6 +70,7 @@ class ProxyConfig(BaseModel):
     wait_timeout_seconds: int = 600
     probe_interval_seconds: int = 10
     health_check: HealthCheckConfig = HealthCheckConfig()
+    circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
 
     # ------------------------------------------------------------------
     # Validators
@@ -250,6 +268,7 @@ class ProxyConfig(BaseModel):
         scheduling = yaml_data.pop("scheduling", None)
         admin_api_key_yaml = yaml_data.pop("admin_api_key", None)
         openai_api_key_yaml = yaml_data.pop("openai_api_key", None)
+        circuit_breaker_yaml = yaml_data.pop("circuit_breaker", None)
 
         # 3. Reject unknown YAML keys early
         known_fields = set(_arg_defaults.keys()) | {"health_check"}
@@ -298,5 +317,11 @@ class ProxyConfig(BaseModel):
         # Pass through health_check if present in yaml_data
         if "health_check" in yaml_data:
             merged.setdefault("health_check", yaml_data["health_check"])
+
+        # 7. Circuit breaker config (YAML only, no CLI override)
+        if circuit_breaker_yaml is not None:
+            merged["circuit_breaker"] = CircuitBreakerConfig(
+                **circuit_breaker_yaml
+            )
 
         return cls(**merged)
