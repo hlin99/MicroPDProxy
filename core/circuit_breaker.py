@@ -20,7 +20,7 @@ from collections import deque
 from typing import Callable, Optional
 
 
-class CircuitState(str, enum.Enum):
+class CircuitBreakerState(str, enum.Enum):
     """Possible states for a circuit breaker."""
 
     CLOSED = "closed"
@@ -63,7 +63,7 @@ class CircuitBreaker:
         self.window_duration_seconds = window_duration_seconds
 
         self._clock = clock or time.monotonic
-        self._state = CircuitState.CLOSED
+        self._state = CircuitBreakerState.CLOSED
         self._failure_timestamps: deque[float] = deque()
         self._opened_at: float = 0.0
         self._half_open_successes: int = 0
@@ -74,15 +74,15 @@ class CircuitBreaker:
     # ------------------------------------------------------------------
 
     @property
-    def state(self) -> CircuitState:
+    def state(self) -> CircuitBreakerState:
         """Return the current circuit state.
 
         Automatically transitions OPEN → HALF-OPEN when the timeout has
         elapsed so that callers always see an up-to-date state.
         """
-        if self._state == CircuitState.OPEN:
+        if self._state == CircuitBreakerState.OPEN:
             if self._clock() - self._opened_at >= self.timeout_duration_seconds:
-                self._state = CircuitState.HALF_OPEN
+                self._state = CircuitBreakerState.HALF_OPEN
                 self._half_open_successes = 0
         return self._state
 
@@ -94,9 +94,9 @@ class CircuitBreaker:
         * HALF-OPEN → allow exactly one probe request at a time
         """
         current = self.state  # triggers timeout check
-        if current == CircuitState.CLOSED:
+        if current == CircuitBreakerState.CLOSED:
             return True
-        if current == CircuitState.OPEN:
+        if current == CircuitBreakerState.OPEN:
             return False
         # HALF-OPEN: allow only one concurrent probe request.
         if self._half_open_pending:
@@ -109,12 +109,12 @@ class CircuitBreaker:
         now = self._clock()
         current = self.state
 
-        if current == CircuitState.HALF_OPEN:
+        if current == CircuitBreakerState.HALF_OPEN:
             # Probe failed → reopen
             self._open(now)
             return
 
-        if current == CircuitState.CLOSED:
+        if current == CircuitBreakerState.CLOSED:
             self._failure_timestamps.append(now)
             self._purge_old_failures(now)
             if len(self._failure_timestamps) >= self.failure_threshold:
@@ -124,13 +124,13 @@ class CircuitBreaker:
         """Record a successful request."""
         current = self.state
 
-        if current == CircuitState.HALF_OPEN:
+        if current == CircuitBreakerState.HALF_OPEN:
             self._half_open_successes += 1
             if self._half_open_successes >= self.success_threshold:
                 self._close()
             return
 
-        if current == CircuitState.CLOSED:
+        if current == CircuitBreakerState.CLOSED:
             # In CLOSED state, a success does *not* clear the failure
             # window.  The sliding window naturally expires old failures.
             # Clearing on success would mask intermittent-failure patterns
@@ -142,14 +142,14 @@ class CircuitBreaker:
     # ------------------------------------------------------------------
 
     def _open(self, now: float) -> None:
-        self._state = CircuitState.OPEN
+        self._state = CircuitBreakerState.OPEN
         self._opened_at = now
         self._failure_timestamps.clear()
         self._half_open_successes = 0
         self._half_open_pending = False
 
     def _close(self) -> None:
-        self._state = CircuitState.CLOSED
+        self._state = CircuitBreakerState.CLOSED
         self._failure_timestamps.clear()
         self._half_open_successes = 0
         self._half_open_pending = False

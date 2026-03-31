@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import pytest
-from circuit_breaker import CircuitBreaker, CircuitState
+from circuit_breaker import CircuitBreaker, CircuitBreakerState
 
 # ── helpers ──────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ def _make_cb(
 class TestInitialState:
     def test_starts_closed(self):
         cb, _ = _make_cb()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     def test_allows_requests_when_closed(self):
         cb, _ = _make_cb()
@@ -52,13 +52,13 @@ class TestClosedToOpen:
         cb, clock = _make_cb(failure_threshold=3)
         for _ in range(3):
             cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     def test_stays_closed_below_threshold(self):
         cb, clock = _make_cb(failure_threshold=3)
         cb.record_failure()
         cb.record_failure()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     def test_denies_requests_when_open(self):
         cb, clock = _make_cb(failure_threshold=2)
@@ -79,7 +79,7 @@ class TestClosedToOpen:
             cb.record_failure()
         cb.record_success()  # should NOT clear the 4 failures
         cb.record_failure()  # 5th failure in window → trip
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     def test_failures_outside_window_are_ignored(self):
         cb, clock = _make_cb(failure_threshold=3, window_duration_seconds=10)
@@ -89,7 +89,7 @@ class TestClosedToOpen:
         clock.advance(6)
         # First failure is now 12s old (outside 10s window)
         cb.record_failure()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
 
 # ── OPEN → HALF-OPEN ────────────────────────────────────────────────
@@ -100,17 +100,17 @@ class TestOpenToHalfOpen:
         cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=30)
         cb.record_failure()
         cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         clock.advance(30)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
 
     def test_stays_open_before_timeout(self):
         cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=30)
         cb.record_failure()
         cb.record_failure()
         clock.advance(29)
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     def test_allows_probe_in_half_open(self):
         cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=10)
@@ -139,10 +139,10 @@ class TestOpenToHalfOpen:
         clock.advance(10)
         assert cb.allow_request() is True  # probe issued
         cb.record_failure()  # probe fails → OPEN
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         clock.advance(10)  # back to HALF-OPEN
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
         assert cb.allow_request() is True  # new probe allowed
 
     def test_probe_slot_resets_after_success_close(self):
@@ -158,7 +158,7 @@ class TestOpenToHalfOpen:
         clock.advance(10)
         assert cb.allow_request() is True  # probe
         cb.record_success()  # close circuit
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.allow_request() is True  # normal traffic
 
 
@@ -175,12 +175,12 @@ class TestHalfOpenToClosed:
         cb.record_failure()
         cb.record_failure()
         clock.advance(10)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
 
         cb.record_success()
-        assert cb.state == CircuitState.HALF_OPEN  # not yet
+        assert cb.state == CircuitBreakerState.HALF_OPEN  # not yet
         cb.record_success()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
     def test_allows_requests_after_closing(self):
         cb, clock = _make_cb(
@@ -192,7 +192,7 @@ class TestHalfOpenToClosed:
         cb.record_failure()
         clock.advance(5)
         cb.record_success()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
         assert cb.allow_request() is True
 
 
@@ -205,10 +205,10 @@ class TestHalfOpenToOpen:
         cb.record_failure()
         cb.record_failure()
         clock.advance(10)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
 
         cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
     def test_reopened_circuit_needs_timeout_again(self):
         cb, clock = _make_cb(failure_threshold=2, timeout_duration_seconds=10)
@@ -217,13 +217,13 @@ class TestHalfOpenToOpen:
         cb.record_failure()
         clock.advance(10)
         cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         # Must wait another timeout
         clock.advance(9)
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
         clock.advance(1)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
 
 
 # ── Full cycle ──────────────────────────────────────────────────────
@@ -236,18 +236,18 @@ class TestFullCycle:
             success_threshold=2,
             timeout_duration_seconds=30,
         )
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
         for _ in range(3):
             cb.record_failure()
-        assert cb.state == CircuitState.OPEN
+        assert cb.state == CircuitBreakerState.OPEN
 
         clock.advance(30)
-        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.state == CircuitBreakerState.HALF_OPEN
 
         cb.record_success()
         cb.record_success()
-        assert cb.state == CircuitState.CLOSED
+        assert cb.state == CircuitBreakerState.CLOSED
 
 
 # ── Config integration ──────────────────────────────────────────────
