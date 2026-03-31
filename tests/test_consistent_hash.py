@@ -117,3 +117,13 @@ class TestConsistentHashPolicy:
             assert policy._ring_map[h] == "w1"  # noqa: SLF001
         # select still works (no crash)
         assert policy.select(session_id="test") == "w1"
+
+        # Removing w2 must NOT corrupt w1's vnodes
+        with patch.object(ConsistentHashPolicy, "_hash", staticmethod(colliding_hash)):
+            policy.remove_worker("w2")
+
+        assert "w2" not in policy._workers  # noqa: SLF001
+        assert len(policy._ring_keys) == 3  # noqa: SLF001
+        for h in policy._ring_keys:  # noqa: SLF001
+            assert policy._ring_map[h] == "w1"  # noqa: SLF001
+        assert policy.select(session_id="test") == "w1"

@@ -75,11 +75,9 @@ class ConsistentHashPolicy(SchedulingPolicy):
         self._workers.discard(addr)
         for i in range(self._virtual_nodes):
             h = self._hash(addr, i)
-            self._ring_map.pop(h, None)
-            try:
+            if self._ring_map.get(h) == addr:
+                del self._ring_map[h]
                 self._ring_keys.remove(h)
-            except ValueError:
-                pass
 
     # ------------------------------------------------------------------
     # Public API
