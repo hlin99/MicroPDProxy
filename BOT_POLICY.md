@@ -136,6 +136,19 @@ Follow conventional commits:
 
 Types: `fix`, `feat`, `test`, `docs`, `refactor`, `chore`, `ci`.
 
+### Commit Identity
+
+All commits must use the following identity:
+```
+git -c user.name="hlin99" -c user.email="tony.lin@intel.com" commit -s
+```
+
+Rules:
+- Always use `tony.lin@intel.com` as the commit email
+- Never use the GitHub noreply address (`*@users.noreply.github.com`)
+- Always include `Signed-off-by` trailer (`-s` flag) for DCO compliance
+- Never add `Co-authored-by` trailers to commit messages
+
 ### PR Description
 
 - Clearly state **what** changed and **why**.
