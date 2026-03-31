@@ -916,16 +916,12 @@ class ProxyServer:
 
 
 if __name__ == "__main__":
+    # Todo: allow more config
     parser = argparse.ArgumentParser("vLLM disaggregated proxy server.")
-    parser.add_argument("--config",
-                        "-c",
-                        type=str,
-                        default=None,
-                        help="Path to YAML configuration file")
     parser.add_argument("--model",
                         "-m",
                         type=str,
-                        default=None,
+                        required=True,
                         help="Model name")
 
     parser.add_argument(
