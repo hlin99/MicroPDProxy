@@ -24,14 +24,14 @@ Make the proxy self-healing: detect failing nodes, stop sending them traffic, re
 
 ---
 
-#### 9a: Node Registry
+#### 9a: Instance Registry
 
-**What:** A centralized `NodeRegistry` that tracks every prefill/decode node's state in one place. All other components (scheduler, circuit breaker, health monitor) read from and write to the registry.
+**What:** A centralized `InstanceRegistry` that tracks every prefill/decode node's state in one place. All other components (scheduler, circuit breaker, health monitor) read from and write to the registry.
 
 **Why:** Currently node state is scattered across `prefill_instances`, `decode_instances`, cyclers, and the scheduler's internal counters. Adding/removing a node requires touching multiple places. A single registry makes state management reliable.
 
 **Implementation:**
-- `NodeRegistry` stores per-node: `address`, `role` (prefill/decode), `status` (healthy/unhealthy/unknown), `circuit_breaker_state`, `last_health_check`, `active_request_count`
+- `InstanceRegistry` stores per-node: `address`, `role` (prefill/decode), `status` (healthy/unhealthy/unknown), `circuit_breaker_state`, `last_health_check`, `active_request_count`
 - `get_available_nodes(role)` → returns only healthy nodes with closed circuit breakers
 - `mark_healthy(addr)` / `mark_unhealthy(addr)` — called by health monitor
 - `record_success(addr)` / `record_failure(addr)` — called after each request, feeds circuit breaker
@@ -182,7 +182,7 @@ retry:
 
 #### 9d: Health Monitor
 
-**What:** Background task that continuously pings every node and updates the Node Registry, which in turn drives circuit breaker state transitions.
+**What:** Background task that continuously pings every node and updates the Instance Registry, which in turn drives circuit breaker state transitions.
 
 **Why:** Without active health checking, we only discover a node is dead when a real user request fails. With health monitoring, dead nodes are detected proactively (within 10 seconds) and removed from rotation before any user is affected.
 
@@ -242,7 +242,7 @@ health_check:
 - All new features default to **disabled** for backward compatibility
 - Must not break existing topology matrix tests
 - Circuit breaker, retry, and health check are independent — each can be enabled separately
-- Startup node discovery from Task 8 should integrate with the Node Registry
+- Startup node discovery from Task 8 should integrate with the Instance Registry
 
 ### CI Testing Strategy
 
@@ -253,10 +253,10 @@ Tests are split into two tiers:
 
 Run in milliseconds. Test component logic in isolation.
 
-**Node Registry:**
+**Instance Registry:**
 ```python
 def test_mark_unhealthy_removes_from_available():
-    registry = NodeRegistry()
+    registry = InstanceRegistry()
     registry.add("decode", "10.0.0.1:8200")
     registry.add("decode", "10.0.0.2:8200")
     registry.mark_unhealthy("10.0.0.1:8200")
@@ -386,7 +386,7 @@ def test_retry_routes_to_different_node():
    above with aggressive timeouts.
 4. **Every state transition must have a test.** Circuit breaker has 5
    transitions — test all 5. Do not skip half-open → open (probe failure).
-5. **Test concurrency.** Node Registry will be accessed from multiple async
+5. **Test concurrency.** Instance Registry will be accessed from multiple async
    tasks. Add a test with concurrent read/write operations.
 6. **Reviewers:** verify that every code path described above has a
    corresponding test. Reject PRs that add features without matching tests.
