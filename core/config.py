@@ -43,6 +43,16 @@ except ImportError:
     from topology import expand_topology
 
 
+class HealthCheckConfig(BaseModel):
+    """Health check configuration."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    interval_seconds: float = 10.0
+    timeout_seconds: float = 3.0
+
+
 class ProxyConfig(BaseModel):
     """Validated proxy configuration."""
 
@@ -59,6 +69,7 @@ class ProxyConfig(BaseModel):
     openai_api_key: Optional[str] = None
     wait_timeout_seconds: int = 600
     probe_interval_seconds: int = 10
+    health_check: HealthCheckConfig = HealthCheckConfig()
     circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
 
     # ------------------------------------------------------------------
@@ -241,6 +252,18 @@ class ProxyConfig(BaseModel):
                     f"Unknown keys in startup config: {sorted(unknown_startup)}"
                 )
 
+        # 1d. Handle nested 'health_check' section
+        health_check_raw = yaml_data.pop("health_check", None)
+        if health_check_raw is not None:
+            if not isinstance(health_check_raw, dict):
+                raise ValueError(
+                    f"'health_check' must be a mapping, "
+                    f"got {type(health_check_raw).__name__}"
+                )
+            # Validate via pydantic model (rejects unknown keys)
+            health_cfg = HealthCheckConfig(**health_check_raw)
+            yaml_data["health_check"] = health_cfg
+
         # 2. Pop YAML-only keys that don't map directly to ProxyConfig fields
         scheduling = yaml_data.pop("scheduling", None)
         admin_api_key_yaml = yaml_data.pop("admin_api_key", None)
@@ -248,7 +271,7 @@ class ProxyConfig(BaseModel):
         circuit_breaker_yaml = yaml_data.pop("circuit_breaker", None)
 
         # 3. Reject unknown YAML keys early
-        known_fields = set(_arg_defaults.keys())
+        known_fields = set(_arg_defaults.keys()) | {"health_check"}
         unknown = set(yaml_data.keys()) - known_fields
         if unknown:
             raise ValueError(
@@ -290,6 +313,10 @@ class ProxyConfig(BaseModel):
             merged.setdefault("admin_api_key", admin_key)
         if openai_key is not None:
             merged.setdefault("openai_api_key", openai_key)
+
+        # Pass through health_check if present in yaml_data
+        if "health_check" in yaml_data:
+            merged.setdefault("health_check", yaml_data["health_check"])
 
         # 7. Circuit breaker config (YAML only, no CLI override)
         if circuit_breaker_yaml is not None:
