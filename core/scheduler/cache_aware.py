@@ -23,16 +23,16 @@ DEFAULT_PREFIX_LENGTH = 256
 class CacheAwarePolicy(SchedulingPolicy):
     """Route requests to workers based on prompt prefix hash.
 
-    Hashes the first *prefix_length* characters of the prompt to
-    deterministically select a worker, so requests sharing the same
-    prefix hit the same backend and benefit from KV-cache reuse.
+    Hashes the first *prefix_length* tokens (whitespace-split approximation)
+    of the prompt to deterministically select a worker, so requests sharing
+    the same prefix hit the same backend and benefit from KV-cache reuse.
 
     Parameters
     ----------
     workers:
         Initial list of worker addresses.
     prefix_length:
-        Number of characters to consider for prefix hashing.
+        Number of tokens (whitespace-split) to consider for prefix hashing.
         Defaults to 256.
     """
 
@@ -50,8 +50,9 @@ class CacheAwarePolicy(SchedulingPolicy):
     # ------------------------------------------------------------------
 
     def _prefix_hash(self, prompt: str) -> int:
-        """Hash the first *prefix_length* characters of *prompt*."""
-        prefix = prompt[: self._prefix_length]
+        """Hash the first *prefix_length* tokens (whitespace-split) of *prompt*."""
+        tokens = prompt.split()
+        prefix = " ".join(tokens[: self._prefix_length])
         return int(
             hashlib.md5(prefix.encode()).hexdigest(), 16  # noqa: S324
         )
@@ -107,5 +108,11 @@ class CacheAwarePolicy(SchedulingPolicy):
         *,
         prompt: Optional[str] = None,
     ) -> Optional[str]:
-        """Schedule using prompt prefix for cache-aware routing."""
+        """Schedule using prompt prefix for cache-aware routing.
+
+        The ``prompt`` keyword arg is not passed by the current proxy router.
+        Router integration (extracting prompt from the HTTP request and
+        passing it here) is deferred to a follow-up integration PR.
+        Without it, requests fall back to empty-string hashing.
+        """
         return self.select(prompt=prompt)

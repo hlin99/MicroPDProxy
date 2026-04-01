@@ -9,10 +9,13 @@ class TestCacheAwarePolicy:
 
     def test_same_prefix_same_worker(self):
         policy = CacheAwarePolicy(workers=["w1", "w2", "w3"], prefix_length=256)
-        prompt = "The quick brown fox " * 50  # >256 chars
-        w1 = policy.select(prompt=prompt)
-        w2 = policy.select(prompt=prompt + "jumps over the lazy dog")
-        assert w1 == w2  # same prefix → same worker
+        # Build a prompt with >256 whitespace-separated tokens
+        base_tokens = [f"token{i}" for i in range(300)]
+        prompt_a = " ".join(base_tokens)
+        prompt_b = " ".join(base_tokens + ["extra", "suffix", "here"])
+        w1 = policy.select(prompt=prompt_a)
+        w2 = policy.select(prompt=prompt_b)
+        assert w1 == w2  # same first 256 tokens → same worker
 
     def test_different_prefix_can_differ(self):
         policy = CacheAwarePolicy(workers=["w1", "w2", "w3"], prefix_length=256)
@@ -89,11 +92,11 @@ class TestCacheAwarePolicy:
 
     def test_custom_prefix_length(self):
         workers = ["w1", "w2", "w3"]
-        # Very short prefix: only first 5 chars matter
-        policy = CacheAwarePolicy(workers=workers, prefix_length=5)
-        w1 = policy.select(prompt="helloAAAAA")
-        w2 = policy.select(prompt="helloBBBBB")
-        assert w1 == w2  # same 5-char prefix
+        # Very short prefix: only first 2 tokens matter
+        policy = CacheAwarePolicy(workers=workers, prefix_length=2)
+        w1 = policy.select(prompt="hello world AAAA BBBB")
+        w2 = policy.select(prompt="hello world CCCC DDDD")
+        assert w1 == w2  # same 2-token prefix
 
     def test_default_prefix_length(self):
         policy = CacheAwarePolicy(workers=["w1"])
