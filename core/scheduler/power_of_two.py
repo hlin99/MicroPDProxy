@@ -33,11 +33,16 @@ class PowerOfTwoPolicy(SchedulingPolicy):
         super().__init__(**kwargs)
         self._workers: list[str] = list(workers) if workers else []
         self._load: dict[str, int] = {w: 0 for w in self._workers}
-        self.last_pair: tuple[str, ...] = ()
+        self._last_pair: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------
     # Load tracking
     # ------------------------------------------------------------------
+
+    @property
+    def last_pair(self) -> tuple[str, ...]:
+        """Last pair of candidates considered (exposed for testing)."""
+        return self._last_pair
 
     def set_load(self, worker: str, load: int) -> None:
         """Set the current load (active request count) for a worker."""
@@ -80,16 +85,23 @@ class PowerOfTwoPolicy(SchedulingPolicy):
             if not self._workers:
                 return None
             if len(self._workers) == 1:
-                self.last_pair = (self._workers[0],)
+                self._last_pair = (self._workers[0],)
+                self._load[self._workers[0]] = (
+                    self._load.get(self._workers[0], 0) + 1
+                )
                 return self._workers[0]
 
             pair = random.sample(self._workers, 2)
-            self.last_pair = tuple(pair)
+            self._last_pair = tuple(pair)
 
             # Pick the one with fewer active requests
             if self._load.get(pair[0], 0) <= self._load.get(pair[1], 0):
-                return pair[0]
-            return pair[1]
+                selected = pair[0]
+            else:
+                selected = pair[1]
+
+            self._load[selected] = self._load.get(selected, 0) + 1
+            return selected
 
     # ------------------------------------------------------------------
     # SchedulingPolicy interface

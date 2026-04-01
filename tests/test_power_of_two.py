@@ -3,8 +3,6 @@
 
 from collections import Counter
 
-import pytest
-
 from core.scheduler.power_of_two import PowerOfTwoPolicy
 
 
@@ -38,11 +36,11 @@ class TestPowerOfTwoSelect:
 
     def test_two_workers_picks_less_loaded(self):
         policy = PowerOfTwoPolicy(workers=["w1", "w2"])
-        policy.set_load("w1", 5)
+        policy.set_load("w1", 100)
         policy.set_load("w2", 0)
-        # With only 2 workers, the pair is always (w1, w2)
-        counts = Counter(policy.select() for _ in range(100))
-        assert counts["w2"] == 100
+        # First select should always pick w2 (0 < 100)
+        result = policy.select()
+        assert result == "w2"
 
     def test_equal_load_distributes(self):
         policy = PowerOfTwoPolicy(workers=["w1", "w2", "w3"])
@@ -123,3 +121,24 @@ class TestScheduleInterface:
 
         cycler = itertools.cycle([])
         assert policy.schedule(cycler) is None
+
+
+class TestLoadAutoIncrement:
+    """Verify select() increments load so power-of-two is truly load-aware."""
+
+    def test_select_increments_load(self):
+        policy = PowerOfTwoPolicy(workers=["w1"])
+        assert policy.get_load("w1") == 0
+        policy.select()
+        assert policy.get_load("w1") == 1
+        policy.select()
+        assert policy.get_load("w1") == 2
+
+    def test_select_then_completion_balances(self):
+        policy = PowerOfTwoPolicy(workers=["w1", "w2"])
+        # Select once — one worker gets load 1
+        selected = policy.select()
+        assert policy.get_load(selected) == 1
+        # Complete it
+        policy.schedule_completion(decode_instance=selected)
+        assert policy.get_load(selected) == 0
