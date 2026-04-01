@@ -180,6 +180,38 @@ class CacheAwarePolicy(SchedulingPolicy):
     # SchedulingPolicy interface
     # ------------------------------------------------------------------
 
+    def select_from(
+        self,
+        candidates: set[str],
+        *,
+        prompt: Optional[str] = None,
+    ) -> Optional[str]:
+        """Select a worker from *candidates* using cache-aware routing.
+
+        Walks the ring clockwise from the prefix hash and returns the
+        first worker that belongs to *candidates*.
+        """
+        with self.lock:
+            if len(self._ring) == 0 or not candidates:
+                return None
+            if prompt is None:
+                prompt = ""
+            h = self._prefix_hash(prompt)
+            # Walk the ring to find a candidate
+            ring = self._ring
+            if not ring._ring_keys:
+                return None
+            start = bisect.bisect_right(ring._ring_keys, h)
+            if start == len(ring._ring_keys):
+                start = 0
+            n = len(ring._ring_keys)
+            for i in range(n):
+                idx = (start + i) % n
+                worker = ring._ring_workers[idx]
+                if worker in candidates:
+                    return worker
+            return None
+
     def schedule(
         self,
         cycler: itertools.cycle,
@@ -191,14 +223,15 @@ class CacheAwarePolicy(SchedulingPolicy):
     ) -> Optional[str]:
         """Schedule using prompt prefix for cache-aware routing.
 
-        The ``prompt`` keyword arg is not passed by the current proxy router.
-        Router integration (extracting prompt from the HTTP request and
-        passing it here) is deferred to a follow-up integration PR.
-        Without it, requests fall back to empty-string hashing.
-
-        Advanced policies only manage decode workers.  For prefill
-        (``is_prompt=True``) fall back to the round-robin *cycler*.
+        Both prefill and decode requests are routed through cache-aware
+        hashing.  When a registry is attached, the ring contains all
+        workers and results are filtered to the appropriate role.
         """
-        if is_prompt:
+        if self._registry is not None:
+            role = "prefill" if is_prompt else "decode"
+            candidates = set(self._registry.get_available_instances(role))
+            if candidates:
+                return self.select_from(candidates, prompt=prompt)
+            # No candidates for this role – fall back to cycler
             return next(cycler)
         return self.select(prompt=prompt)

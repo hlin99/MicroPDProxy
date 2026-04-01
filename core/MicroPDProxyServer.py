@@ -962,11 +962,11 @@ def _create_scheduling_policy(
     if strategy == "roundrobin":
         return RoundRobinSchedulingPolicy(registry=registry)
 
-    # Registry-based advanced strategies (decode-only, prefill uses cycler)
+    # Registry-based advanced strategies (all workers for role-aware routing)
     if default_registry.has(strategy):
         policy = default_registry.create(
             strategy,
-            workers=list(config.decode),
+            workers=list(config.prefill) + list(config.decode),
             registry=registry,
             **strategy_opts,
         )
