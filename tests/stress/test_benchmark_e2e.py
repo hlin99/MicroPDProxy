@@ -24,7 +24,9 @@ from typing import Any
 import httpx
 import pytest
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 MODEL_PATH = os.path.join(_REPO_ROOT, "tokenizers", "DeepSeek-R1")
 
 NUM_PREFILL = 2
@@ -336,7 +338,9 @@ def test_benchmark_burst_short_prompts(cluster):
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
         print(
-            f"\nShort burst: {success}/{count} OK, p50={elapsed[len(elapsed) // 2]:.3f}s, p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
+            f"\nShort burst: {success}/{count} OK, "
+            f"p50={elapsed[len(elapsed) // 2]:.3f}s, "
+            f"p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
         )
     assert success == count, f"{count - success} short-burst requests failed"
 
@@ -375,6 +379,8 @@ def test_benchmark_long_prompts(cluster):
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
         print(
-            f"\nLong prompts: {success}/{count} OK, p50={elapsed[len(elapsed) // 2]:.3f}s, p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
+            f"\nLong prompts: {success}/{count} OK, "
+            f"p50={elapsed[len(elapsed) // 2]:.3f}s, "
+            f"p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
         )
     assert success == count, f"{count - success} long-prompt requests failed"
