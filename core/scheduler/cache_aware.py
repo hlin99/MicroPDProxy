@@ -227,9 +227,11 @@ class CacheAwarePolicy(SchedulingPolicy):
     ) -> Optional[str]:
         """Schedule using prompt prefix for cache-aware routing.
 
-        Both prefill and decode requests are routed through cache-aware
-        hashing.  When a registry is attached, the ring contains all
-        workers and results are filtered to the appropriate role.
+        The *is_prompt* flag is passed by the router to distinguish
+        prefill from decode phases.  Both phases are routed through
+        cache-aware hashing.  When a registry is attached, the ring
+        contains all workers and results are filtered to the
+        appropriate role based on *is_prompt*.
         """
         if self._registry is not None:
             role = "prefill" if is_prompt else "decode"

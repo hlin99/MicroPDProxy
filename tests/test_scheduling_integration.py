@@ -327,6 +327,11 @@ class TestConsistentHashSelectFrom:
         result = policy.select_from({"w1", "w2", "w3"}, header="sess-1")
         assert result in {"w1", "w2", "w3"}
 
+    def test_candidate_not_on_ring(self):
+        """Candidate not present on the ring returns None."""
+        policy = ConsistentHashPolicy(workers=["w1", "w2"])
+        assert policy.select_from({"w99"}, header="sess-1") is None
+
     def test_schedule_role_filtered(self):
         """schedule(is_prompt=True/False) routes to different role pools."""
         from registry import InstanceRegistry
@@ -368,6 +373,11 @@ class TestCacheAwareSelectFrom:
         policy = CacheAwarePolicy(workers=["w1", "w2", "w3"])
         result = policy.select_from({"w1", "w2", "w3"}, prompt="test")
         assert result in {"w1", "w2", "w3"}
+
+    def test_candidate_not_on_ring(self):
+        """Candidate not present on the ring returns None."""
+        policy = CacheAwarePolicy(workers=["w1", "w2"])
+        assert policy.select_from({"w99"}, prompt="hello") is None
 
     def test_schedule_role_filtered(self):
         """schedule(is_prompt=True/False) routes to different role pools."""
