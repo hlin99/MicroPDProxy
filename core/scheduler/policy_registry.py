@@ -6,6 +6,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .cache_aware import CacheAwarePolicy
+from .consistent_hash import ConsistentHashPolicy
 from .load_balanced import LoadBalancedScheduler
 from .power_of_two import PowerOfTwoPolicy
 from .round_robin import RoundRobinSchedulingPolicy
@@ -76,10 +78,9 @@ def _build_default_registry() -> PolicyRegistry:
     registry.register("loadbalanced", LoadBalancedScheduler)
 
     # Future policies — placeholders registered when their classes exist.
-    # Uncomment each line once the corresponding module is implemented:
-    # registry.register("consistent_hash", ConsistentHashPolicy)
+    registry.register("consistent_hash", ConsistentHashPolicy)
     registry.register("power_of_two", PowerOfTwoPolicy)
-    # registry.register("cache_aware", CacheAwarePolicy)
+    registry.register("cache_aware", CacheAwarePolicy)
 
     return registry
 
