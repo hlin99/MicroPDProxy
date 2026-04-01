@@ -4,7 +4,7 @@
 import hashlib
 import itertools
 import logging
-from bisect import bisect_right, insort
+from bisect import bisect_left, bisect_right, insort
 from typing import Optional
 
 try:
@@ -30,11 +30,10 @@ class ConsistentHashPolicy(SchedulingPolicy):
         self,
         workers: Optional[list[str]] = None,
         virtual_nodes: int = DEFAULT_VIRTUAL_NODES,
-        header_name: str = "X-Session-ID",
     ):
         super().__init__()
         self._virtual_nodes = virtual_nodes
-        # Sorted list of (hash_value, worker_addr)
+        # Sorted list of hash values; _ring_map maps hash → worker address.
         self._ring_keys: list[int] = []
         self._ring_map: dict[int, str] = {}
         self._workers: set[str] = set()
@@ -77,7 +76,10 @@ class ConsistentHashPolicy(SchedulingPolicy):
             h = self._hash(addr, i)
             if self._ring_map.get(h) == addr:
                 del self._ring_map[h]
-                self._ring_keys.remove(h)
+                # O(log n) removal via bisect instead of O(n) list.remove
+                idx = bisect_left(self._ring_keys, h)
+                if idx < len(self._ring_keys) and self._ring_keys[idx] == h:
+                    del self._ring_keys[idx]
 
     # ------------------------------------------------------------------
     # Public API
@@ -109,6 +111,10 @@ class ConsistentHashPolicy(SchedulingPolicy):
         key = header or user or client_ip or session_id
         if key is None:
             key = "__default__"
+            logger.warning(
+                "No routing context (header/user/client_ip/session_id) — "
+                "all such requests will hit the same worker"
+            )
 
         with self.lock:
             if not self._ring_keys:
