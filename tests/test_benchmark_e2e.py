@@ -12,7 +12,6 @@ Uses pytest.mark.benchmark so it can also be collected via:
 
 from __future__ import annotations
 
-import json
 import os
 import random
 import socket
@@ -103,13 +102,21 @@ def cluster():
             procs.append(
                 subprocess.Popen(
                     [
-                        sys.executable, "-m", "uvicorn",
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
                         "dummy_nodes.prefill_node:app",
-                        "--host", "127.0.0.1", "--port", str(port),
-                        "--log-level", "error",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
                     ],
-                    env=env, cwd=_REPO_ROOT,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
             )
 
@@ -117,13 +124,21 @@ def cluster():
             procs.append(
                 subprocess.Popen(
                     [
-                        sys.executable, "-m", "uvicorn",
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
                         "dummy_nodes.decode_node:app",
-                        "--host", "127.0.0.1", "--port", str(port),
-                        "--log-level", "error",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
                     ],
-                    env=env, cwd=_REPO_ROOT,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
             )
 
@@ -133,14 +148,22 @@ def cluster():
         procs.append(
             subprocess.Popen(
                 [
-                    sys.executable, "-m", "core.MicroPDProxyServer",
-                    "--model", MODEL_PATH,
-                    "--prefill", *[f"127.0.0.1:{p}" for p in prefill_ports],
-                    "--decode", *[f"127.0.0.1:{p}" for p in decode_ports],
-                    "--port", str(proxy_port),
+                    sys.executable,
+                    "-m",
+                    "core.MicroPDProxyServer",
+                    "--model",
+                    MODEL_PATH,
+                    "--prefill",
+                    *[f"127.0.0.1:{p}" for p in prefill_ports],
+                    "--decode",
+                    *[f"127.0.0.1:{p}" for p in decode_ports],
+                    "--port",
+                    str(proxy_port),
                 ],
-                env=env, cwd=_REPO_ROOT,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env,
+                cwd=_REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
         )
         assert _wait_port(proxy_port, timeout=30), "Proxy failed to start"
@@ -246,9 +269,9 @@ def test_benchmark_10k_mixed(cluster):
     print(f"Successful     : {success}")
     print(f"Failed         : {failed}")
     if elapsed_all:
-        print(f"Latency p50    : {elapsed_all[len(elapsed_all)//2]:.3f}s")
-        print(f"Latency p90    : {elapsed_all[int(len(elapsed_all)*0.9)]:.3f}s")
-        print(f"Latency p99    : {elapsed_all[int(len(elapsed_all)*0.99)]:.3f}s")
+        print(f"Latency p50    : {elapsed_all[len(elapsed_all) // 2]:.3f}s")
+        print(f"Latency p90    : {elapsed_all[int(len(elapsed_all) * 0.9)]:.3f}s")
+        print(f"Latency p99    : {elapsed_all[int(len(elapsed_all) * 0.99)]:.3f}s")
         print(f"Latency max    : {elapsed_all[-1]:.3f}s")
     print("=" * 60)
 
@@ -292,7 +315,9 @@ def test_benchmark_burst_short_prompts(cluster):
     def send(idx: int) -> dict:
         payload = {
             "model": cluster["model"],
-            "messages": [{"role": "user", "content": _random_content(random.randint(0, 100))}],
+            "messages": [
+                {"role": "user", "content": _random_content(random.randint(0, 100))}
+            ],
             "max_tokens": 5,
             "stream": False,
         }
@@ -307,7 +332,9 @@ def test_benchmark_burst_short_prompts(cluster):
     success = sum(1 for r in results if r["status"] == 200)
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
-        print(f"\nShort burst: {success}/{count} OK, p50={elapsed[len(elapsed)//2]:.3f}s, p99={elapsed[int(len(elapsed)*0.99)]:.3f}s")
+        print(
+            f"\nShort burst: {success}/{count} OK, p50={elapsed[len(elapsed) // 2]:.3f}s, p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
+        )
     assert success == count, f"{count - success} short-burst requests failed"
 
 
@@ -321,7 +348,12 @@ def test_benchmark_long_prompts(cluster):
     def send(idx: int) -> dict:
         payload = {
             "model": cluster["model"],
-            "messages": [{"role": "user", "content": _random_content(random.randint(5000, 10000))}],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _random_content(random.randint(5000, 10000)),
+                }
+            ],
             "max_tokens": 32,
             "stream": random.choice([True, False]),
         }
@@ -338,5 +370,7 @@ def test_benchmark_long_prompts(cluster):
     success = sum(1 for r in results if r["status"] == 200)
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
-        print(f"\nLong prompts: {success}/{count} OK, p50={elapsed[len(elapsed)//2]:.3f}s, p99={elapsed[int(len(elapsed)*0.99)]:.3f}s")
+        print(
+            f"\nLong prompts: {success}/{count} OK, p50={elapsed[len(elapsed) // 2]:.3f}s, p99={elapsed[int(len(elapsed) * 0.99)]:.3f}s"
+        )
     assert success == count, f"{count - success} long-prompt requests failed"
