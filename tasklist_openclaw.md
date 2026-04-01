@@ -1,3 +1,5 @@
+> **Note:** Task status tracking has moved to [GitHub Issues](https://github.com/xPyD-hub/xPyD-proxy/issues?q=label%3Atask). This document is retained as a design reference.
+
 # Task for OpenClaw
 
 ## Review Requirements (Strict Policy)
@@ -17,7 +19,7 @@ The system uses a shell script `xpyd_start_proxy.sh` to configure and launch a d
 
 ---
 
-## Task 10 (IN PROGRESS)
+## Task 10
 
 ### Goal
 Add advanced load balancing strategies beyond round-robin and load-balanced. Inspired by [vllm-project/router](https://github.com/vllm-project/router).
@@ -219,7 +221,7 @@ def test_policy_selectable_via_yaml():
 
 ---
 
-## Task 9 (DONE)
+## Task 9
 
 ### Goal
 Make the proxy self-healing: detect failing nodes, stop sending them traffic, retry failed requests on healthy nodes, and automatically recover when nodes come back. Inspired by [vllm-project/router](https://github.com/vllm-project/router).
@@ -599,7 +601,7 @@ def test_retry_routes_to_different_node():
 
 ---
 
-## Task 8 (DONE)
+## Task 8
 
 ### Goal
 Package the proxy as an installable CLI tool (`xpyd`) with startup node discovery.
@@ -657,7 +659,7 @@ startup:
 
 ---
 
-## Task 7 (DONE)
+## Task 7
 
 ### Goal
 Support YAML-based configuration as the primary way to pass parameters to the proxy, replacing the growing list of CLI arguments.
@@ -704,14 +706,14 @@ Topology expansion example:
 
 ---
 
-## Task 6 (DONE)
+## Task 6
 
 ### Goal
 Introduce `core/config.py` as the single source of truth for all proxy configuration — CLI arguments, environment variables, defaults, and validation.
 
 ---
 
-## Task 5 (DONE)
+## Task 5
 
 ### Goal
 Add observability to the proxy via a Prometheus-compatible `/metrics` endpoint.
@@ -723,28 +725,28 @@ Add observability to the proxy via a Prometheus-compatible `/metrics` endpoint.
 
 ---
 
-## Task 4 (DONE)
+## Task 4
 
 ### Goal
 Refactor the scheduler code in `core/MicroPDProxyServer.py` into a clean module structure under `core/scheduler/`.
 
 ---
 
-## Task 3 (DONE)
+## Task 3
 
 ### Goal
 Support a real benchmark-style validation flow using `vllm bench serve` semantics in a local dummy-based setup.
 
 ---
 
-## Task 2 (DONE)
+## Task 2
 
 ### Goal
 Parameterize `core/xpyd_start_proxy.sh` so that the fixed configuration becomes command-line-parameter driven.
 
 ---
 
-## Task 1 (DONE)
+## Task 1
 
 ### Goal
 Debug `dummy_nodes` to make them work correctly under specific proxy server configurations without modifying core business logic.
