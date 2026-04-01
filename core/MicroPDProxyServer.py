@@ -972,9 +972,7 @@ def _create_scheduling_policy(
         )
         return policy
 
-    # Fallback: try registry anyway
-    policy = default_registry.create(strategy, registry=registry, **strategy_opts)
-    return policy
+    raise ValueError(f"Unknown scheduling strategy: {strategy!r}")
 
 
 class ProxyServer:

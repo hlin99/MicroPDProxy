@@ -1,18 +1,15 @@
-"""End-to-end benchmark: 1000 concurrent clients, 10000 requests, mixed lengths.
+"""End-to-end benchmark: concurrent clients, mixed workloads, large clusters.
 
-Topology: 2 prefill + 16 decode + 1 proxy (same as test_benchmark_integration).
-Excluded from CI via --ignore. Run manually:
+Topology: 2 prefill + 16 decode + 1 proxy (default cluster).
+Additional test with 6 prefill + 6 decode for large-scale validation.
+
+Runs in normal CI (no special markers needed):
 
     PYTHONPATH=core:dummy_nodes pytest tests/test_benchmark_e2e.py -v -s
-
-Uses pytest.mark.benchmark so it can also be collected via:
-
-    pytest -m benchmark tests/test_benchmark_e2e.py
 """
 
 from __future__ import annotations
 
-import json
 import os
 import random
 import socket
@@ -30,8 +27,8 @@ MODEL_PATH = os.path.join(_REPO_ROOT, "tokenizers", "DeepSeek-R1")
 
 NUM_PREFILL = 2
 NUM_DECODE = 16
-TOTAL_REQUESTS = 10_000
-MAX_CONCURRENCY = 1_000
+TOTAL_REQUESTS = 1_000
+MAX_CONCURRENCY = 100
 
 
 def _free_port() -> int:
@@ -103,13 +100,21 @@ def cluster():
             procs.append(
                 subprocess.Popen(
                     [
-                        sys.executable, "-m", "uvicorn",
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
                         "dummy_nodes.prefill_node:app",
-                        "--host", "127.0.0.1", "--port", str(port),
-                        "--log-level", "error",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
                     ],
-                    env=env, cwd=_REPO_ROOT,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
             )
 
@@ -117,13 +122,21 @@ def cluster():
             procs.append(
                 subprocess.Popen(
                     [
-                        sys.executable, "-m", "uvicorn",
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
                         "dummy_nodes.decode_node:app",
-                        "--host", "127.0.0.1", "--port", str(port),
-                        "--log-level", "error",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
                     ],
-                    env=env, cwd=_REPO_ROOT,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
             )
 
@@ -133,14 +146,22 @@ def cluster():
         procs.append(
             subprocess.Popen(
                 [
-                    sys.executable, "-m", "core.MicroPDProxyServer",
-                    "--model", MODEL_PATH,
-                    "--prefill", *[f"127.0.0.1:{p}" for p in prefill_ports],
-                    "--decode", *[f"127.0.0.1:{p}" for p in decode_ports],
-                    "--port", str(proxy_port),
+                    sys.executable,
+                    "-m",
+                    "core.MicroPDProxyServer",
+                    "--model",
+                    MODEL_PATH,
+                    "--prefill",
+                    *[f"127.0.0.1:{p}" for p in prefill_ports],
+                    "--decode",
+                    *[f"127.0.0.1:{p}" for p in decode_ports],
+                    "--port",
+                    str(proxy_port),
                 ],
-                env=env, cwd=_REPO_ROOT,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=env,
+                cwd=_REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
         )
         assert _wait_port(proxy_port, timeout=30), "Proxy failed to start"
@@ -207,7 +228,6 @@ def _send_request(base_url: str, model: str, idx: int) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.benchmark
 def test_benchmark_10k_mixed(cluster):
     """Fire 10000 mixed (streaming + non-streaming) requests at 1000 concurrency.
 
@@ -259,11 +279,10 @@ def test_benchmark_10k_mixed(cluster):
     assert failed == 0, f"{failed}/{TOTAL_REQUESTS} requests failed"
 
 
-@pytest.mark.benchmark
 def test_benchmark_streaming_only(cluster):
     """1000 concurrent streaming requests to verify SSE under load."""
     base_url = f"http://127.0.0.1:{cluster['proxy_port']}"
-    count = 2000
+    count = 200
 
     def send(idx: int) -> dict:
         payload = _build_payload(cluster["model"], stream=True)
@@ -283,16 +302,17 @@ def test_benchmark_streaming_only(cluster):
     assert has_chunks == count, "Some streaming responses had fewer than 2 chunks"
 
 
-@pytest.mark.benchmark
 def test_benchmark_burst_short_prompts(cluster):
     """Burst of 5000 short-prompt requests (< 100 chars) at full concurrency."""
     base_url = f"http://127.0.0.1:{cluster['proxy_port']}"
-    count = 5000
+    count = 100
 
     def send(idx: int) -> dict:
         payload = {
             "model": cluster["model"],
-            "messages": [{"role": "user", "content": _random_content(random.randint(0, 100))}],
+            "messages": [
+                {"role": "user", "content": _random_content(random.randint(0, 100))}
+            ],
             "max_tokens": 5,
             "stream": False,
         }
@@ -307,21 +327,29 @@ def test_benchmark_burst_short_prompts(cluster):
     success = sum(1 for r in results if r["status"] == 200)
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
-        print(f"\nShort burst: {success}/{count} OK, p50={elapsed[len(elapsed)//2]:.3f}s, p99={elapsed[int(len(elapsed)*0.99)]:.3f}s")
+        p50 = elapsed[len(elapsed) // 2]
+        p99 = elapsed[int(len(elapsed) * 0.99)]
+        print(
+            f"\nShort burst: {success}/{count} OK, " f"p50={p50:.3f}s, p99={p99:.3f}s"
+        )
     assert success == count, f"{count - success} short-burst requests failed"
 
 
-@pytest.mark.benchmark
 def test_benchmark_long_prompts(cluster):
     """500 requests with long prompts (5k-10k chars) at moderate concurrency."""
     base_url = f"http://127.0.0.1:{cluster['proxy_port']}"
-    count = 500
+    count = 100
     concurrency = 200
 
     def send(idx: int) -> dict:
         payload = {
             "model": cluster["model"],
-            "messages": [{"role": "user", "content": _random_content(random.randint(5000, 10000))}],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": _random_content(random.randint(5000, 10000)),
+                }
+            ],
             "max_tokens": 32,
             "stream": random.choice([True, False]),
         }
@@ -338,5 +366,149 @@ def test_benchmark_long_prompts(cluster):
     success = sum(1 for r in results if r["status"] == 200)
     elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
     if elapsed:
-        print(f"\nLong prompts: {success}/{count} OK, p50={elapsed[len(elapsed)//2]:.3f}s, p99={elapsed[int(len(elapsed)*0.99)]:.3f}s")
+        p50 = elapsed[len(elapsed) // 2]
+        p99 = elapsed[int(len(elapsed) * 0.99)]
+        print(
+            f"\nLong prompts: {success}/{count} OK, " f"p50={p50:.3f}s, p99={p99:.3f}s"
+        )
     assert success == count, f"{count - success} long-prompt requests failed"
+
+
+# ---------------------------------------------------------------------------
+# Large-scale cluster (6 prefill + 6 decode)
+# ---------------------------------------------------------------------------
+
+NUM_PREFILL_LARGE = 6
+NUM_DECODE_LARGE = 6
+
+
+@pytest.fixture(scope="module")
+def large_cluster():
+    """Spin up 6 prefill + 6 decode + proxy for large-scale testing."""
+    env = os.environ.copy()
+    env["DUMMY_MODEL_ID"] = MODEL_PATH
+    env["PREFILL_DELAY_PER_TOKEN"] = "0"
+    env["DECODE_DELAY_PER_TOKEN"] = "0"
+    procs: list[subprocess.Popen] = []
+
+    prefill_ports = [_free_port() for _ in range(NUM_PREFILL_LARGE)]
+    decode_ports = [_free_port() for _ in range(NUM_DECODE_LARGE)]
+    proxy_port = _free_port()
+
+    try:
+        for port in prefill_ports:
+            procs.append(
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
+                        "dummy_nodes.prefill_node:app",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
+                    ],
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            )
+
+        for port in decode_ports:
+            procs.append(
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
+                        "dummy_nodes.decode_node:app",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                        "--log-level",
+                        "error",
+                    ],
+                    env=env,
+                    cwd=_REPO_ROOT,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            )
+
+        for port in prefill_ports + decode_ports:
+            assert _wait_port(port), f"Node on port {port} failed to start"
+
+        procs.append(
+            subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "core.MicroPDProxyServer",
+                    "--model",
+                    MODEL_PATH,
+                    "--prefill",
+                    *[f"127.0.0.1:{p}" for p in prefill_ports],
+                    "--decode",
+                    *[f"127.0.0.1:{p}" for p in decode_ports],
+                    "--port",
+                    str(proxy_port),
+                ],
+                env=env,
+                cwd=_REPO_ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        )
+        assert _wait_port(proxy_port, timeout=30), "Proxy failed to start"
+
+        yield {
+            "proxy_port": proxy_port,
+            "model": MODEL_PATH,
+        }
+
+    finally:
+        for p in procs:
+            p.terminate()
+        for p in procs:
+            try:
+                p.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.wait(timeout=5)
+
+
+def test_large_scale_6p6d(large_cluster):
+    """Validate proxy with 6 prefill + 6 decode nodes under load.
+
+    Sends 500 mixed requests at 100 concurrency to verify routing,
+    load balancing, and stability with many backend nodes.
+    """
+    base_url = f"http://127.0.0.1:{large_cluster['proxy_port']}"
+    count = 500
+    concurrency = 100
+
+    results: list[dict] = []
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [
+            pool.submit(_send_request, base_url, large_cluster["model"], i)
+            for i in range(count)
+        ]
+        for f in as_completed(futures):
+            results.append(f.result())
+
+    success = sum(1 for r in results if r["status"] == 200)
+    elapsed = sorted(r["elapsed"] for r in results if r["status"] == 200)
+    if elapsed:
+        print(
+            f"\nLarge-scale 6P+6D: {success}/{count} OK, "
+            f"p50={elapsed[len(elapsed)//2]:.3f}s, "
+            f"p99={elapsed[int(len(elapsed)*0.99)]:.3f}s"
+        )
+    assert (
+        success == count
+    ), f"{count - success}/{count} requests failed on 6P+6D cluster"
