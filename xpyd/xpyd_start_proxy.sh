@@ -136,7 +136,8 @@ build_instance_endpoints() {
         endpoints+=("${ip_list[$main_node]}:${port}")
     done
 
-    printf '%s ' "${endpoints[@]}"
+    printf '%s
+' "${endpoints[@]}" | paste -sd' ' -
 }
 
 PREFILL_NODES=""
@@ -271,23 +272,24 @@ DECODE_ARGS=$(build_instance_endpoints \
     "$DECODE_BASE_PORT" \
     DECODE_IPS)
 
+
 case "$MODE" in
     benchmark)
-        CMD="python3 -m xpyd.proxy \
-        --model $MODEL_PATH \
-        --prefill $PREFILL_ARGS \
-        --decode $DECODE_ARGS \
-        --port $DEFAULT_PROXY_PORT \
-        --repeat_p_request 1 \
-        --repeat_d_times 639 \
-        --benchmark_mode"
+        error "benchmark mode is no longer supported via shell script (use xpyd proxy with YAML config)"
         ;;
     advanced|basic|benchmark_decode)
-        CMD="python3 -m xpyd.proxy \
-        --model $MODEL_PATH \
-        --prefill $PREFILL_ARGS \
-        --decode $DECODE_ARGS \
-        --port $DEFAULT_PROXY_PORT"
+        CONFIG_FILE="/tmp/xpyd_proxy_$$.yaml"
+        _yaml_prefill=$(echo "$PREFILL_ARGS" | tr ' ' '\n' | sed 's/^/  - "/' | sed 's/$/"/')
+        _yaml_decode=$(echo "$DECODE_ARGS" | tr ' ' '\n' | sed 's/^/  - "/' | sed 's/$/"/')
+        cat > "$CONFIG_FILE" <<YAMLEOF
+model: "$MODEL_PATH"
+prefill:
+$_yaml_prefill
+decode:
+$_yaml_decode
+port: $DEFAULT_PROXY_PORT
+YAMLEOF
+        CMD="python3 -m xpyd.proxy proxy --config $CONFIG_FILE"
         ;;
     *)
         error "Unsupported mode: $MODE"

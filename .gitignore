@@ -31,3 +31,5 @@ htmlcov/
 
 # Logs
 *.log
+/xpyd.yaml
+tmp*.yaml
