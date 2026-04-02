@@ -820,8 +820,8 @@ class Proxy:
                         yield chunk
                 except CancelledError:
                     logger.warning(
-                        f"[0]Client disconnected during {handler_name} "
-                        "(CancelledError)"
+                        "[0]Client disconnected during %s (CancelledError)",
+                        handler_name,
                     )
                 except Exception as e:
                     logger.error("[1] Exception in wrapped_generator: %s", str(e))
