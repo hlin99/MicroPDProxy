@@ -34,7 +34,6 @@ scheduling: "loadbalanced"
 generator_on_p_node: false
 
 # Round-robin mode (default: false, use scheduling instead)
-roundrobin: false
 
 # Startup probe settings
 startup:

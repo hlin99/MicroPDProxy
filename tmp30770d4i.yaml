@@ -1,0 +1,9 @@
+decode:
+- 127.0.0.1:57161
+- 127.0.0.1:47109
+- 127.0.0.1:54567
+- 127.0.0.1:50611
+model: /tmp/xpyd-task16/tests/assets/dummy_tokenizer
+port: 40087
+prefill:
+- 127.0.0.1:60235

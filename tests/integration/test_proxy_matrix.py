@@ -98,6 +98,7 @@ def _spawn_proxy(
     prefill_instances: list[str], decode_instances: list[str], port: int
 ) -> subprocess.Popen:
     # Generate a temporary YAML config for the proxy
+    import atexit
     import tempfile
 
     import yaml
@@ -115,6 +116,7 @@ def _spawn_proxy(
     )
     yaml.dump(config, config_file)
     config_file.close()
+    atexit.register(os.unlink, config_file.name)
 
     command = [
         PYTHON,
