@@ -32,7 +32,7 @@ dev = [
 ]
 
 [project.scripts]
-xpyd = "xpyd.server:main"
+xpyd = "xpyd.proxy:main"
 
 [tool.setuptools.packages.find]
 include = ["xpyd*", "dummy_nodes*"]

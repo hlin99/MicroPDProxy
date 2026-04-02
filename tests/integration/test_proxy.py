@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient
 
 from dummy_nodes.decode_node import app as decode_app
 from dummy_nodes.prefill_node import app as prefill_app
-from xpyd.server import LoadBalancedScheduler, Proxy, RoundRobinSchedulingPolicy
+from xpyd.proxy import LoadBalancedScheduler, Proxy, RoundRobinSchedulingPolicy
 
 # ---------------------------------------------------------------------------
 # Use local tokenizer from repo to avoid network dependency in CI

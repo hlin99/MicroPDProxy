@@ -158,7 +158,7 @@ class TestSessionIdExtraction:
 
     @staticmethod
     def _extract_session_id(raw_request, body):
-        """Replicate the extraction logic from xpyd.server."""
+        """Replicate the extraction logic from xpyd.proxy."""
         return (
             raw_request.headers.get("x-session-id")
             or body.get("user")

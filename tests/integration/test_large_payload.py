@@ -13,7 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from dummy_nodes.decode_node import app as decode_app
 from dummy_nodes.prefill_node import app as prefill_app
-from xpyd.server import Proxy, RoundRobinSchedulingPolicy
+from xpyd.proxy import Proxy, RoundRobinSchedulingPolicy
 
 _REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

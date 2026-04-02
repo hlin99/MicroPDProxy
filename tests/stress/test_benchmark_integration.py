@@ -119,7 +119,7 @@ def cluster():
             [
                 sys.executable,
                 "-m",
-                "xpyd.server",
+                "xpyd.proxy",
                 "--model",
                 MODEL_PATH,
                 "--prefill",

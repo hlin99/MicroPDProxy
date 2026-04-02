@@ -21,7 +21,7 @@ try:
     )
 except ImportError:
     try:
-        from xpyd.server import (
+        from xpyd.proxy import (
             log_info_blue,
             log_info_red,
             log_info_yellow,

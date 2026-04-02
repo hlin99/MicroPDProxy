@@ -18,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 
 from xpyd.config import ProxyConfig
 from xpyd.discovery import DiscoveryTimeout, NodeDiscovery
-from xpyd.server import _build_parser, _resolve_config_path
+from xpyd.proxy import _build_parser, _resolve_config_path
 
 # ------------------------------------------------------------------
 # CLI argument parsing
