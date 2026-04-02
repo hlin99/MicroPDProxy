@@ -41,8 +41,30 @@ from xpyd.scheduler import (
     default_registry,
 )
 
-formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s",
-                              "%Y-%m-%d %H:%M:%S")
+class _ExtraFormatter(logging.Formatter):
+    """Formatter that appends ``extra`` fields as ``key=value`` pairs."""
+
+    _SKIP = set(logging.LogRecord("", "", "", 0, "", (), None).__dict__) | {
+        "taskName",
+        "message",
+        "asctime",
+    }
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = super().format(record)
+        extras = {
+            k: v
+            for k, v in record.__dict__.items()
+            if k not in self._SKIP
+        }
+        if extras:
+            base += " | " + " ".join(f"{k}={v}" for k, v in extras.items())
+        return base
+
+
+formatter = _ExtraFormatter(
+    "[%(asctime)s] %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
+)
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
