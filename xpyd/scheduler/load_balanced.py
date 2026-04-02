@@ -107,8 +107,12 @@ class LoadBalancedScheduler(SchedulingPolicy):
         self.prefill_utils_counter[min_index] += request_len
         self.prefill_schedule_index += 1
         logger.info(
-            f"<schedule prefill {self.prefill_schedule_index}> "
-            f"instance = {min_index}, min_tokens = {min_value}",
+            "Schedule prefill",
+            extra={
+                "schedule_index": self.prefill_schedule_index,
+                "instance": min_index,
+                "min_tokens": min_value,
+            },
         )
         return self.prefill_instances[min_index]
 
@@ -147,15 +151,19 @@ class LoadBalancedScheduler(SchedulingPolicy):
         self.decode_kv_utils_counter[min_index] += request_len
         self.decode_schedule_index += 1
         logger.info(
-            f"<schedule decode {self.decode_schedule_index}> "
-            f"instance = {min_index}, min_batch = {min_value}",
+            "Schedule decode",
+            extra={
+                "schedule_index": self.decode_schedule_index,
+                "instance": min_index,
+                "min_batch": min_value,
+            },
         )
         logger.info(
-            f"<schedule decode> decode_bs_counter: {self.decode_bs_counter}"
-        )
-        logger.info(
-            f"<schedule decode> "
-            f"decode_kv_utils_counter: {self.decode_kv_utils_counter}",
+            "Decode counters",
+            extra={
+                "bs_counter": list(self.decode_bs_counter),
+                "kv_utils_counter": list(self.decode_kv_utils_counter),
+            },
         )
         return self.decode_instances[min_index]
 

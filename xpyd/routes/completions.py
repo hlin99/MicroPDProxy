@@ -97,10 +97,15 @@ async def handle_completion(endpoint, raw_request, server, is_chat):
             request, is_chat, server
         )
         end_time = time.time()
+        elapsed_ms = (end_time - start_time) * 1000
         logger.info(
-            f"{handler_name} -- prompt length: {total_length}, "
-            f"max tokens: {max_tokens}, "
-            f"tokenizer took {(end_time - start_time) * 1000:.2f} ms"
+            "Completion request received",
+            extra={
+                "endpoint": endpoint,
+                "prompt_length": total_length,
+                "max_tokens": max_tokens,
+                "tokenizer_ms": round(elapsed_ms, 2),
+            },
         )
 
         _session_id = (
@@ -135,7 +140,10 @@ async def handle_completion(endpoint, raw_request, server, is_chat):
         )
 
         if prefill_instance is None or decode_instance is None:
-            logger.warning("No available instance can handle the request. ")
+            logger.warning(
+                "No available instance",
+                extra={"endpoint": endpoint, "prompt_length": total_length},
+            )
             server.exception_handler(
                 prefill_instance=prefill_instance,
                 decode_instance=decode_instance,

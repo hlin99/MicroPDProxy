@@ -290,7 +290,6 @@ class TestHandleCompletion:
             patch("xpyd.routes.completions.track_request_start", return_value=0),
             patch("xpyd.routes.completions.track_request_end"),
             patch("xpyd.routes.completions.logger"),
-            patch("xpyd.routes.completions.logger"),
         ):
             result = await handle_completion(
                 "/v1/completions", raw_request, server, is_chat=False
