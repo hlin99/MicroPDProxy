@@ -185,39 +185,38 @@ class TestExtractPromptInfo:
 
 
 class TestGetTotalTokenLength:
-    """Tests for get_total_token_length edge cases.
-
-    These tests call the real method, so we mock self.tokenizer instead.
-    """
+    """Tests for get_total_token_length in core.utils."""
 
     @pytest.fixture
-    def server_with_tokenizer(self):
-        from core.MicroPDProxyServer import Proxy
+    def tokenizer(self):
+        return MagicMock(side_effect=lambda text: {"input_ids": list(range(len(text)))})
 
-        with patch("core.MicroPDProxyServer.Proxy.__init__", return_value=None):
-            srv = Proxy.__new__(Proxy)
-        srv.tokenizer = MagicMock(
-            side_effect=lambda text: {"input_ids": list(range(len(text)))}
-        )
-        return srv
+    def test_none_input(self, tokenizer):
+        from core.utils import get_total_token_length
 
-    def test_none_input(self, server_with_tokenizer):
-        assert server_with_tokenizer.get_total_token_length(None) == 0
+        assert get_total_token_length(tokenizer, None) == 0
 
-    def test_empty_list(self, server_with_tokenizer):
-        assert server_with_tokenizer.get_total_token_length([]) == 0
+    def test_empty_list(self, tokenizer):
+        from core.utils import get_total_token_length
 
-    def test_flat_int_list(self, server_with_tokenizer):
+        assert get_total_token_length(tokenizer, []) == 0
+
+    def test_flat_int_list(self, tokenizer):
         """Single flat list of ints — already tokenized token IDs."""
-        assert server_with_tokenizer.get_total_token_length([101, 102, 103]) == 3
+        from core.utils import get_total_token_length
 
-    def test_multimodal_dict_list(self, server_with_tokenizer):
+        assert get_total_token_length(tokenizer, [101, 102, 103]) == 3
+
+    def test_multimodal_dict_list(self, tokenizer):
         """List of dicts with text parts — multimodal content."""
-        result = server_with_tokenizer.get_total_token_length(
+        from core.utils import get_total_token_length
+
+        result = get_total_token_length(
+            tokenizer,
             [
                 {"type": "text", "text": "hello"},
                 {"type": "image_url", "image_url": {"url": "http://example.com"}},
-            ]
+            ],
         )
         assert result == 5  # len("hello") via mock tokenizer
 

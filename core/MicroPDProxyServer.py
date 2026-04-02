@@ -265,41 +265,10 @@ class Proxy:
             req_len=req_len)
 
     def get_total_token_length(self, prompt):
-        fake_len = 100
-        if prompt is None:
-            return 0
-        if isinstance(prompt, str):
-            return len(self.tokenizer(prompt)["input_ids"])
-        elif isinstance(prompt, list):
-            if len(prompt) == 0:
-                return 0
-            # Single flat list of ints — already tokenized token IDs
-            if all(isinstance(x, int) for x in prompt):
-                return len(prompt)
-            if all(isinstance(p, str) for p in prompt):
-                return sum(len(self.tokenizer(p)["input_ids"]) for p in prompt)
-            if all(
-                isinstance(p, list) and all(isinstance(x, int) for x in p)
-                for p in prompt
-            ):
-                # Nested list of ints — multiple already-tokenized sequences
-                return sum(len(p) for p in prompt)
-            if all(isinstance(p, dict) for p in prompt):
-                # Multimodal content array — extract text parts only
-                total = 0
-                for p in prompt:
-                    if "text" in p:
-                        total += len(self.tokenizer(p["text"])["input_ids"])
-                return total
-            logger.error(
-                "Unsupported prompt format: %s / nested types. Value: %r",
-                type(prompt),
-                prompt,
-            )
-            return fake_len
-        else:
-            logger.error("Unsupported prompt type: %s", type(prompt))
-            return fake_len
+        """Compute total token length — delegates to :func:`core.utils.get_total_token_length`."""
+        from core.utils import get_total_token_length as _get_total_token_length
+
+        return _get_total_token_length(self.tokenizer, prompt)
 
     def exception_handler(self, prefill_instance=None, decode_instance=None, req_len=None):
         if prefill_instance or decode_instance:
