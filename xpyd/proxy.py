@@ -29,7 +29,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from transformers import AutoTokenizer
 from fastapi.middleware.cors import CORSMiddleware
 from xpyd.config import ProxyConfig
-from xpyd.errors import INVALID_REQUEST, SERVER_ERROR, error_response
+from xpyd.errors import INVALID_REQUEST, PROXY_ERROR, SERVER_ERROR, error_response
 from xpyd.discovery import NodeDiscovery
 from xpyd.health_monitor import HealthMonitor
 from xpyd.registry import InstanceRegistry
@@ -497,10 +497,7 @@ class ProxyServer:
             if path in ("/health", "/ping", "/status", "/metrics"):
                 return await call_next(request)
             if not discovery.is_ready:
-                return JSONResponse(
-                    {"error": "waiting for backend nodes"},
-                    status_code=503,
-                )
+                return error_response("Waiting for backend nodes", PROXY_ERROR, 503)
             return await call_next(request)
 
         @app.on_event("startup")
