@@ -2,11 +2,9 @@
 """Unit tests for multi-model routing support."""
 
 import itertools
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
-
-from xpyd.registry import InstanceRegistry, InstanceStatus
+from xpyd.registry import InstanceRegistry
 
 
 class TestRegistryAddWithModel:
@@ -110,29 +108,43 @@ class TestSchedulerRoutesByModel:
         # deepseek instances
         reg.add("prefill", "10.0.0.2:8000", model="deepseek-r1")
         reg.add("decode", "10.0.0.2:9000", model="deepseek-r1")
-        for addr in ["10.0.0.1:8000", "10.0.0.1:9000",
-                      "10.0.0.2:8000", "10.0.0.2:9000"]:
+        for addr in [
+            "10.0.0.1:8000",
+            "10.0.0.1:9000",
+            "10.0.0.2:8000",
+            "10.0.0.2:9000",
+        ]:
             reg.mark_healthy(addr)
 
         all_prefill = ["10.0.0.1:8000", "10.0.0.2:8000"]
         all_decode = ["10.0.0.1:9000", "10.0.0.2:9000"]
 
-        with patch("xpyd.scheduler.load_balanced.query_instance_model_len",
-                    return_value=[131072] * 2):
+        with patch(
+            "xpyd.scheduler.load_balanced.query_instance_model_len",
+            return_value=[131072] * 2,
+        ):
             sched = LoadBalancedScheduler(
-                all_prefill, all_decode, registry=reg,
+                all_prefill,
+                all_decode,
+                registry=reg,
             )
 
         cycler = itertools.cycle(all_prefill)
         result = sched.schedule(
-            cycler, is_prompt=True, request_len=100, max_tokens=100,
+            cycler,
+            is_prompt=True,
+            request_len=100,
+            max_tokens=100,
             model="llama-3",
         )
         assert result == "10.0.0.1:8000"
 
         cycler_d = itertools.cycle(all_decode)
         result_d = sched.schedule(
-            cycler_d, is_prompt=False, request_len=100, max_tokens=100,
+            cycler_d,
+            is_prompt=False,
+            request_len=100,
+            max_tokens=100,
             model="deepseek-r1",
         )
         assert result_d == "10.0.0.2:9000"
@@ -150,15 +162,22 @@ class TestSchedulerNoInstanceForModel:
         reg.mark_healthy("10.0.0.1:8000")
         reg.mark_healthy("10.0.0.1:9000")
 
-        with patch("xpyd.scheduler.load_balanced.query_instance_model_len",
-                    return_value=[131072]):
+        with patch(
+            "xpyd.scheduler.load_balanced.query_instance_model_len",
+            return_value=[131072],
+        ):
             sched = LoadBalancedScheduler(
-                ["10.0.0.1:8000"], ["10.0.0.1:9000"], registry=reg,
+                ["10.0.0.1:8000"],
+                ["10.0.0.1:9000"],
+                registry=reg,
             )
 
         cycler = itertools.cycle(["10.0.0.1:8000"])
         result = sched.schedule(
-            cycler, is_prompt=True, request_len=100, max_tokens=100,
+            cycler,
+            is_prompt=True,
+            request_len=100,
+            max_tokens=100,
             model="nonexistent",
         )
         assert result is None

@@ -5,7 +5,6 @@ import os
 import socket
 import threading
 import time
-from unittest.mock import patch
 
 import pytest
 import uvicorn
@@ -46,7 +45,6 @@ def _make_dummy_app(model_id: str):
         ModelCard,
         ModelListResponse,
         UsageInfo,
-        build_models_response,
         count_prompt_tokens_from_messages,
         count_prompt_tokens_from_prompt,
         generate_id,
@@ -71,7 +69,8 @@ def _make_dummy_app(model_id: str):
     async def chat(request: ChatCompletionRequest):
         prompt_tokens = count_prompt_tokens_from_messages(request.messages)
         max_tokens = get_effective_max_tokens(
-            request.max_completion_tokens, request.max_tokens,
+            request.max_completion_tokens,
+            request.max_tokens,
         )
         text = render_dummy_text(max_tokens)
         return ChatCompletionResponse(
@@ -118,13 +117,29 @@ def _run(app, port):
 #   qwen-2:      p4, d4
 # ---------------------------------------------------------------------------
 
-_PORTS = {k: _free_port() for k in [
-    "p1", "p2", "p3", "p4", "d1", "d2", "d3", "d4",
-]}
+_PORTS = {
+    k: _free_port()
+    for k in [
+        "p1",
+        "p2",
+        "p3",
+        "p4",
+        "d1",
+        "d2",
+        "d3",
+        "d4",
+    ]
+}
 
 _MODEL_MAP = {
-    "p1": "llama-3", "p2": "llama-3", "p3": "deepseek-r1", "p4": "qwen-2",
-    "d1": "llama-3", "d2": "llama-3", "d3": "deepseek-r1", "d4": "qwen-2",
+    "p1": "llama-3",
+    "p2": "llama-3",
+    "p3": "deepseek-r1",
+    "p4": "qwen-2",
+    "d1": "llama-3",
+    "d2": "llama-3",
+    "d3": "deepseek-r1",
+    "d4": "qwen-2",
 }
 
 # Start all nodes
