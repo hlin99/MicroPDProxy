@@ -12,29 +12,25 @@ The decode node's response is returned to the client (streaming or
 non-streaming).
 """
 import argparse
-import ipaddress
 import itertools
 import json
 import logging
 import os
 import sys
-import time
 from typing import Callable, Optional
 
 import aiohttp
 import requests
 import uvicorn
 from colorlog.escape_codes import escape_codes
-from fastapi import (APIRouter, Depends, FastAPI, Header, HTTPException,
-                     Request, status)
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi import (APIRouter, FastAPI, HTTPException,
+                     Request)
+from fastapi.responses import JSONResponse, StreamingResponse
 from transformers import AutoTokenizer
-from asyncio import CancelledError
 from fastapi.middleware.cors import CORSMiddleware
 try:
     from .config import ProxyConfig
     from .discovery import NodeDiscovery
-    from .metrics import get_metrics, track_request_end, track_request_start
     from .health_monitor import HealthMonitor
     from .registry import InstanceRegistry
     from .routes import register_routes
@@ -47,7 +43,6 @@ try:
 except ImportError:
     from config import ProxyConfig
     from discovery import NodeDiscovery
-    from metrics import get_metrics, track_request_end, track_request_start
     from health_monitor import HealthMonitor
     from registry import InstanceRegistry
     from routes import register_routes
