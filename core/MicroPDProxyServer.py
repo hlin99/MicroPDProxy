@@ -571,23 +571,37 @@ class Proxy:
 
     def get_total_token_length(self, prompt):
         fake_len = 100
+        if prompt is None:
+            return 0
         if isinstance(prompt, str):
             return len(self.tokenizer(prompt)["input_ids"])
         elif isinstance(prompt, list):
+            if len(prompt) == 0:
+                return 0
+            # Single flat list of ints — already tokenized token IDs
+            if all(isinstance(x, int) for x in prompt):
+                return len(prompt)
             if all(isinstance(p, str) for p in prompt):
                 return sum(len(self.tokenizer(p)["input_ids"]) for p in prompt)
-            elif (all(isinstance(p, list) and
-                all(isinstance(x, int) for x in p) for p in prompt)):
-                # Already tokenized
+            if all(
+                isinstance(p, list) and all(isinstance(x, int) for x in p)
+                for p in prompt
+            ):
+                # Nested list of ints — multiple already-tokenized sequences
                 return sum(len(p) for p in prompt)
-            elif all(isinstance(p, dict) and "text" in p for p in prompt):
-                return sum(len(self.tokenizer(p["text"])["input_ids"]) for p in prompt)
-            else:
-                logger.error(
-                    "Unsupported prompt format: %s / nested types. Value: %r",
-                    type(prompt), prompt
-                )
-                return fake_len
+            if all(isinstance(p, dict) for p in prompt):
+                # Multimodal content array — extract text parts only
+                total = 0
+                for p in prompt:
+                    if "text" in p:
+                        total += len(self.tokenizer(p["text"])["input_ids"])
+                return total
+            logger.error(
+                "Unsupported prompt format: %s / nested types. Value: %r",
+                type(prompt),
+                prompt,
+            )
+            return fake_len
         else:
             logger.error("Unsupported prompt type: %s", type(prompt))
             return fake_len
@@ -619,11 +633,74 @@ class Proxy:
                 self.registry.record_failure(decode_instance)
 
     async def create_completion(self, raw_request: Request):
-        return await self._create_completion(raw_request)
+        return await self._handle_completion("/v1/completions", raw_request, is_chat=False)
 
-    async def _create_completion(self, raw_request: Request):
-        _metrics_endpoint = "/v1/completions"
-        _metrics_start = track_request_start(_metrics_endpoint)
+    async def create_chat_completion(self, raw_request: Request):
+        return await self._handle_completion("/v1/chat/completions", raw_request, is_chat=True)
+
+    def _validate_completion_request(self, request, is_chat):
+        """Validate required fields. Returns JSONResponse on error, None on success."""
+        if is_chat:
+            if "messages" not in request:
+                return JSONResponse(
+                    {"error": {"message": "Missing required field: messages", "type": "invalid_request_error"}},
+                    status_code=400,
+                )
+            if not isinstance(request["messages"], list):
+                return JSONResponse(
+                    {"error": {"message": "Field messages must be a list", "type": "invalid_request_error"}},
+                    status_code=400,
+                )
+        else:
+            if "prompt" not in request:
+                return JSONResponse(
+                    {"error": {"message": "Missing required field: prompt", "type": "invalid_request_error"}},
+                    status_code=400,
+                )
+        return None
+
+    def _extract_prompt_info(self, request, is_chat):
+        """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
+        if is_chat:
+            total_length = 0
+            prompt_parts = []
+            for msg in request["messages"]:
+                content = msg.get("content")
+                if content is None:
+                    continue
+                if isinstance(content, str):
+                    total_length += self.get_total_token_length(content)
+                    prompt_parts.append(content)
+                elif isinstance(content, list):
+                    # Multimodal content array — extract text parts
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text = part.get("text", "")
+                            total_length += self.get_total_token_length(text)
+                            prompt_parts.append(text)
+            max_tokens = request.get("max_completion_tokens", 0)
+            if max_tokens == 0:
+                max_tokens = request.get("max_tokens", 0)
+            prompt_text = " ".join(prompt_parts)
+        else:
+            prompt = request.get("prompt")
+            total_length = self.get_total_token_length(prompt)
+            max_tokens = request.get("max_tokens", 0)
+            prompt_text = prompt if isinstance(prompt, str) else str(prompt)
+        return total_length, max_tokens, prompt_text
+
+    def _build_kv_prepare_request(self, request, is_chat):
+        """Build the KV-prepare request with max_tokens=1."""
+        kv_prepare_request = request.copy()
+        kv_prepare_request["max_tokens"] = 1
+        if is_chat:
+            kv_prepare_request["max_completion_tokens"] = 1
+        return kv_prepare_request
+
+    async def _handle_completion(self, endpoint, raw_request, is_chat):
+        """Unified completion handler for both /v1/completions and /v1/chat/completions."""
+        _metrics_start = track_request_start(endpoint)
+        handler_name = "create_chat_completion" if is_chat else "create_completion"
         try:
             try:
                 request = await raw_request.json()
@@ -633,26 +710,20 @@ class Proxy:
                     status_code=400,
                 )
 
-            if "prompt" not in request:
-                return JSONResponse(
-                    {"error": {"message": "Missing required field: prompt", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
+            error_resp = self._validate_completion_request(request, is_chat)
+            if error_resp:
+                return error_resp
 
-            total_length = 0
             prefill_instance = None
             decode_instance = None
 
-            kv_prepare_request = request.copy()
-            kv_prepare_request["max_tokens"] = 1
+            kv_prepare_request = self._build_kv_prepare_request(request, is_chat)
 
             start_time = time.time()
-            prompt = kv_prepare_request.get("prompt")
-            total_length = self.get_total_token_length(prompt)
-            max_tokens = request.get("max_tokens", 0)
+            total_length, max_tokens, prompt_text = self._extract_prompt_info(request, is_chat)
             end_time = time.time()
             log_info_green(
-                f"create_completion -- prompt length: {total_length}, "
+                f"{handler_name} -- prompt length: {total_length}, "
                 f"max tokens: {max_tokens}, "
                 f"tokenizer took {(end_time - start_time) * 1000:.2f} ms"
             )
@@ -670,183 +741,19 @@ class Proxy:
                 "client_ip": (
                     raw_request.client.host if raw_request.client else None
                 ),
-                "prompt": prompt if isinstance(prompt, str) else str(prompt),
-            }
-
-            prefill_instance = self.schedule(self.prefill_cycler,
-                                                 is_prompt=True,
-                                                 request_len=total_length,
-                                                 max_tokens = 1,
-                                                 **_sched_kwargs)
-
-            decode_instance = self.schedule(self.decode_cycler,
-                                            is_prompt=False,
-                                            request_len=total_length,
-                                            max_tokens = max_tokens,
-                                            **_sched_kwargs)
-
-            if prefill_instance is None or decode_instance is None:
-                log_info_red("No available instance can handle the request. ")
-                self.exception_handler(
-                    prefill_instance=prefill_instance,
-                    decode_instance=decode_instance,
-                    req_len=total_length
-                )
-                return None
-
-            value = b''
-            try:
-                async for chunk in self.forward_request(
-                        f"http://{prefill_instance}/v1/completions",
-                        kv_prepare_request):
-                    value += chunk
-            except HTTPException as http_exc:
-                self.exception_handler(prefill_instance, decode_instance, total_length)
-                self._record_failure(prefill_instance, decode_instance)
-                raise http_exc
-
-            # Perform kv recv and decoding stage
-            value = value.strip().decode("utf-8").removesuffix(
-                "data: [DONE]").encode("utf-8")
-
-            async def streaming_response(value):
-                if value:
-                    yield value
-                else:
-                    yield b""
-
-            generator_p = streaming_response(value)
-            try:
-                generator_d = self.forward_request(
-                    f"http://{decode_instance}/v1/completions", request)
-            except HTTPException as http_exc:
-                self.exception_handler(prefill_instance, decode_instance, total_length)
-                self._record_failure(prefill_instance, decode_instance)
-                raise http_exc
-
-            if request.get("stream", False):
-                generator_class = self.generator
-            else:
-                # For stream=False request, cannot use P first token
-                generator_class = D_first_token_generator
-            final_generator = generator_class(generator_p,
-                                              generator_d,
-                                              self,
-                                              prefill_instance,
-                                              decode_instance,
-                                              req_len=total_length)
-            media_type = (
-                "text/event-stream"
-                if request.get("stream", False)
-                else "application/json"
-            )
-            async def wrapped_generator():
-                try:
-                    async for chunk in final_generator:
-                        yield chunk
-                except CancelledError:
-                    logger.warning(
-                        "[0]Client disconnected during create_completion "
-                        "(CancelledError)"
-                    )
-                except Exception as e:
-                    logger.error("[1] Exception in wrapped_generator: %s", str(e))
-                    raise
-                finally:
-                    track_request_end(_metrics_endpoint, _metrics_start)
-            return StreamingResponse(wrapped_generator(), media_type=media_type)
-        except HTTPException:
-            track_request_end(_metrics_endpoint, _metrics_start)
-            raise
-        except Exception:
-            track_request_end(_metrics_endpoint, _metrics_start)
-            logger.error("Error in create_completion: %s", sys.exc_info()[1])
-            return JSONResponse(
-                {"error": {"message": "Internal proxy error", "type": "proxy_error"}},
-                status_code=500,
-            )
-
-    async def create_chat_completion(self, raw_request: Request):
-        return await self._create_chat_completion(raw_request)
-
-    async def _create_chat_completion(self, raw_request: Request):
-        _metrics_endpoint = "/v1/chat/completions"
-        _metrics_start = track_request_start(_metrics_endpoint)
-        try:
-            try:
-                request = await raw_request.json()
-            except (json.JSONDecodeError, ValueError):
-                return JSONResponse(
-                    {"error": {"message": "Invalid JSON in request body", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-
-            if "messages" not in request:
-                return JSONResponse(
-                    {"error": {"message": "Missing required field: messages", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-            if not isinstance(request["messages"], list):
-                return JSONResponse(
-                    {"error": {"message": "Field messages must be a list", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-
-            total_length = 0
-            prefill_instance = None
-            decode_instance = None
-
-            # add params to request
-            kv_prepare_request = request.copy()
-            kv_prepare_request["max_tokens"] = 1
-            kv_prepare_request["max_completion_tokens"] = 1
-
-            start_time = time.time()
-            # prefill stage
-            total_length = sum(
-                self.get_total_token_length(msg['content'])
-                for msg in kv_prepare_request['messages'])
-            max_tokens = request.get("max_completion_tokens", 0)
-            if max_tokens == 0:
-                max_tokens = request.get("max_tokens", 0)
-
-            end_time = time.time()
-            log_info_green(
-                f"create_chat_completion -- prompt length: {total_length}, "
-                f"tokenizer took "
-                f"{(end_time - start_time) * 1000:.2f} ms")
-
-            # Extract scheduling context for advanced policies
-            _prompt_text = " ".join(
-                msg.get("content", "")
-                for msg in request.get("messages", [])
-                if isinstance(msg.get("content"), str)
-            )
-            _session_id = (
-                raw_request.headers.get("x-session-id")
-                or request.get("user")
-                or (raw_request.client.host if raw_request.client else None)
-            )
-            _sched_kwargs = {
-                "header": raw_request.headers.get("x-session-id"),
-                "session_id": _session_id,
-                "user": request.get("user"),
-                "client_ip": (
-                    raw_request.client.host if raw_request.client else None
-                ),
-                "prompt": _prompt_text,
+                "prompt": prompt_text,
             }
 
             prefill_instance = self.schedule(self.prefill_cycler,
                                              is_prompt=True,
                                              request_len=total_length,
-                                             max_tokens = 1,
+                                             max_tokens=1,
                                              **_sched_kwargs)
 
             decode_instance = self.schedule(self.decode_cycler,
                                             is_prompt=False,
                                             request_len=total_length,
-                                            max_tokens = max_tokens,
+                                            max_tokens=max_tokens,
                                             **_sched_kwargs)
 
             if prefill_instance is None or decode_instance is None:
@@ -856,12 +763,15 @@ class Proxy:
                     decode_instance=decode_instance,
                     req_len=total_length
                 )
-                return None
+                return JSONResponse(
+                    {"error": {"message": "No available instance can handle the request", "type": "proxy_error"}},
+                    status_code=503,
+                )
 
             value = b''
             try:
                 async for chunk in self.forward_request(
-                        f"http://{prefill_instance}/v1/chat/completions",
+                        f"http://{prefill_instance}{endpoint}",
                         kv_prepare_request):
                     value += chunk
             except HTTPException as http_exc:
@@ -882,8 +792,7 @@ class Proxy:
             generator_p = streaming_response(value)
             try:
                 generator_d = self.forward_request(
-                    "http://" + decode_instance + "/v1/chat/completions",
-                    request)
+                    f"http://{decode_instance}{endpoint}", request)
             except HTTPException as http_exc:
                 self.exception_handler(prefill_instance, decode_instance, total_length)
                 self._record_failure(prefill_instance, decode_instance)
@@ -911,21 +820,21 @@ class Proxy:
                         yield chunk
                 except CancelledError:
                     logger.warning(
-                        "[0]Client disconnected during create_chat_completion "
-                        "(CancelledError)"
+                        "[0]Client disconnected during %s (CancelledError)",
+                        handler_name,
                     )
                 except Exception as e:
                     logger.error("[1] Exception in wrapped_generator: %s", str(e))
                     raise
                 finally:
-                    track_request_end(_metrics_endpoint, _metrics_start)
+                    track_request_end(endpoint, _metrics_start)
             return StreamingResponse(wrapped_generator(), media_type=media_type)
         except HTTPException:
-            track_request_end(_metrics_endpoint, _metrics_start)
+            track_request_end(endpoint, _metrics_start)
             raise
         except Exception:
-            track_request_end(_metrics_endpoint, _metrics_start)
-            logger.error("Error in create_chat_completion: %s", sys.exc_info()[1])
+            track_request_end(endpoint, _metrics_start)
+            logger.error("Error in %s: %s", handler_name, sys.exc_info()[1])
             return JSONResponse(
                 {"error": {"message": "Internal proxy error", "type": "proxy_error"}},
                 status_code=500,
