@@ -12,31 +12,28 @@ The decode node's response is returned to the client (streaming or
 non-streaming).
 """
 import argparse
-import ipaddress
 import itertools
 import json
 import logging
 import os
 import sys
-import time
 from typing import Callable, Optional
 
 import aiohttp
 import requests
 import uvicorn
 from colorlog.escape_codes import escape_codes
-from fastapi import (APIRouter, Depends, FastAPI, Header, HTTPException,
-                     Request, status)
-from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi import (APIRouter, FastAPI, HTTPException,
+                     Request)
+from fastapi.responses import JSONResponse, StreamingResponse
 from transformers import AutoTokenizer
-from asyncio import CancelledError
 from fastapi.middleware.cors import CORSMiddleware
 try:
     from .config import ProxyConfig
     from .discovery import NodeDiscovery
-    from .metrics import get_metrics, track_request_end, track_request_start
     from .health_monitor import HealthMonitor
     from .registry import InstanceRegistry
+    from .routes import register_routes
     from .scheduler import (
         LoadBalancedScheduler,
         RoundRobinSchedulingPolicy,
@@ -46,9 +43,9 @@ try:
 except ImportError:
     from config import ProxyConfig
     from discovery import NodeDiscovery
-    from metrics import get_metrics, track_request_end, track_request_start
     from health_monitor import HealthMonitor
     from registry import InstanceRegistry
+    from routes import register_routes
     from scheduler import (
         LoadBalancedScheduler,
         RoundRobinSchedulingPolicy,
@@ -61,7 +58,10 @@ formatter = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s",
 handler = logging.StreamHandler()
 handler.setFormatter(formatter)
 
-logger = logging.getLogger(__name__)
+# Use a fixed logger name so all modules (scheduler, routes, etc.) can
+# reference the same configured logger regardless of import path.
+_LOGGER_NAME = "xpyd.proxy"
+logger = logging.getLogger(_LOGGER_NAME)
 logger.setLevel(logging.INFO)
 logger.addHandler(handler)
 logger.propagate = False
@@ -194,6 +194,7 @@ class Proxy:
         self.setup_routes()
         self.generator = (P_first_token_generator
                           if generator_on_p_node else D_first_token_generator)
+        self.d_first_token_generator_class = D_first_token_generator
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
     def on_done(self,
@@ -205,300 +206,7 @@ class Proxy:
                                  req_len=req_len)
 
     def setup_routes(self):
-        self.router.post(
-            "/v1/completions",
-            dependencies=[
-                Depends(self.validate_json_request)
-            ])(self.custom_create_completion if self.
-               custom_create_completion else self.create_completion)
-        self.router.post(
-            "/v1/chat/completions",
-            dependencies=[
-                Depends(self.validate_json_request)
-            ])(self.custom_create_chat_completion if self.
-               custom_create_chat_completion else self.create_chat_completion)
-
-        self.router.options("/v1/completions")(lambda: None)
-        self.router.options("/v1/chat/completions")(lambda: None)
-        self.router.options("/v1/models")(lambda: None)
-        self.router.options("/status")(lambda: None)
-        self.router.options("/health")(lambda: None)
-        self.router.options("/ping")(lambda: None)
-        self.router.options("/tokenize")(lambda: None)
-        self.router.options("/detokenize")(lambda: None)
-        self.router.options("/version")(lambda: None)
-        self.router.options("/v1/embeddings")(lambda: None)
-        self.router.options("/pooling")(lambda: None)
-        self.router.options("/score")(lambda: None)
-        self.router.options("/v1/score")(lambda: None)
-        self.router.options("/rerank")(lambda: None)
-        self.router.options("/v1/rerank")(lambda: None)
-        self.router.options("/v2/rerank")(lambda: None)
-        self.router.options("/invocations")(lambda: None)
-
-        self.router.get("/status",
-                        response_class=JSONResponse)(self.get_status)
-        self.router.post("/instances/add",
-                         dependencies=[Depends(self.api_key_authenticate)
-                                       ])(self.add_instance_endpoint)
-        self.router.get("/health", response_class=PlainTextResponse)(self.get_health)
-        self.router.get("/ping", response_class=PlainTextResponse)(self.get_ping)
-        self.router.post("/ping", response_class=PlainTextResponse)(self.get_ping)
-        self.router.post("/tokenize", response_class=JSONResponse)(self.post_tokenize)
-        self.router.post("/detokenize", response_class=JSONResponse)(self.post_detokenize)
-        self.router.get("/v1/models", response_class=JSONResponse)(self.get_models)
-        self.router.get("/version", response_class=JSONResponse)(self.get_version)
-        self.router.post("/v1/embeddings", response_class=JSONResponse)(self.post_embeddings)
-        self.router.post("/pooling", response_class=JSONResponse)(self.post_pooling)
-        self.router.post("/score", response_class=JSONResponse)(self.post_score)
-        self.router.post("/v1/score", response_class=JSONResponse)(self.post_scorev1)
-        self.router.post("/rerank", response_class=JSONResponse)(self.post_rerank)
-        self.router.post("/v1/rerank", response_class=JSONResponse)(self.post_rerankv1)
-        self.router.post("/v2/rerank", response_class=JSONResponse)(self.post_rerankv2)
-        self.router.post("/invocations", response_class=JSONResponse)(self.post_invocations)
-
-        # Prometheus metrics
-        self.router.get("/metrics")(self.get_metrics)
-
-    @staticmethod
-    async def get_metrics():
-        return Response(
-            content=get_metrics(),
-            media_type="text/plain; version=0.0.4; charset=utf-8",
-        )
-
-    async def get_from_instance(self, path: str, is_full_instancelist: int = 0):
-        if not self.prefill_instances:
-            return JSONResponse(content={"error": "No instances available"}, status_code=500)
-
-        if is_full_instancelist == 0:
-            instances = [self.prefill_instances[0]]
-        else:
-            instances = self.prefill_instances + self.decode_instances
-
-        results = {}
-        async with aiohttp.ClientSession() as session:
-            for inst in instances:
-                url = f"http://{inst}{path}"
-                try:
-                    async with session.get(url) as resp:
-                        try:
-                            data = await resp.json()
-                            dtype = "json"
-                        except aiohttp.ContentTypeError:
-                            data = await resp.text()
-                            dtype = "text"
-                        results[inst] = {
-                            "status": resp.status,
-                            "type": dtype,
-                            "data": data
-                        }
-                except Exception as e:
-                    results[inst] = {
-                        "status": 500,
-                        "error": str(e)
-                    }
-                    print(f"Failed to fetch {url}: {e}, continue...")
-
-        return JSONResponse(content=results, status_code=200)
-
-    async def get_version(self):
-        return await self.get_from_instance("/version")
-
-    async def get_models(self):
-        return await self.get_from_instance("/v1/models")
-
-    async def get_health(self):
-        return await self.get_from_instance("/health", is_full_instancelist=1)
-
-    async def get_ping(self):
-        return await self.get_from_instance("/ping", is_full_instancelist=1)
-
-    async def post_to_instance(
-        self,
-        request: Request,
-        path: str,
-        json_template: dict
-    ):
-        body = await request.json()
-
-        missing = [k for k in json_template.keys() if k not in body]
-        if missing:
-            return JSONResponse(
-                {"error": f"Missing required fields: {', '.join(missing)}"},
-                status_code=400
-            )
-
-        payload = json_template.copy()
-        payload.update(body)
-
-        url = f"http://{self.prefill_instances[0]}{path}"
-        try:
-            async with aiohttp.ClientSession() as session, \
-                    session.post(url, json=payload) as resp:
-                try:
-                    content = await resp.json()
-                except aiohttp.ContentTypeError:
-                    content = {"raw": await resp.text()}
-                return JSONResponse(content, status_code=resp.status)
-        except Exception as e:
-            return JSONResponse(
-                {"error": f"Failed to fetch {url}, reason: {str(e)}"},
-                status_code=500
-            )
-
-    async def post_detokenize(self, request: Request):
-        json_template = {"model": "", "tokens": []}
-        return await self.post_to_instance(request, "/detokenize", json_template)
-
-    async def post_tokenize(self, request: Request):
-        json_template = {"model": "", "prompt": ""}
-        return await self.post_to_instance(request, "/tokenize", json_template)
-
-    async def post_embeddings(self, request: Request):
-        json_template = {"model": "", "input": ""}
-        return await self.post_to_instance(request, "/v1/embeddings", json_template)
-
-    async def post_pooling(self, request: Request):
-        json_template = {"model": "", "messages": ""}
-        return await self.post_to_instance(request, "/pooling", json_template)
-
-    async def post_score(self, request: Request):
-        json_template = {"model": "", "text_1": "", "text_2": "", "predictions": ""}
-        return await self.post_to_instance(request, "/score", json_template)
-
-    async def post_scorev1(self, request: Request):
-        json_template = {"model": "", "text_1": "", "text_2": "", "predictions": ""}
-        return await self.post_to_instance(request, "/v1/score", json_template)
-
-    async def post_rerank(self, request: Request):
-        json_template = {"model": "", "query": "", "documents": ""}
-        return await self.post_to_instance(request, "/rerank", json_template)
-
-    async def post_rerankv1(self, request: Request):
-        json_template = {"model": "", "query": "", "documents": ""}
-        return await self.post_to_instance(request, "/v1/rerank", json_template)
-
-    async def post_rerankv2(self, request: Request):
-        json_template = {"model": "", "query": "", "documents": ""}
-        return await self.post_to_instance(request, "/v2/rerank", json_template)
-
-    async def post_invocations(self, request: Request):
-        json_template = {"model": "", "prompt": ""}
-        return await self.post_to_instance(request, "/invocations", json_template)
-
-    async def validate_json_request(self, raw_request: Request):
-        content_type = raw_request.headers.get("content-type", "").lower()
-        if content_type != "application/json":
-            raise HTTPException(
-                status_code=415,
-                detail=
-                "Unsupported Media Type: Only 'application/json' is allowed",
-            )
-
-    def api_key_authenticate(self, x_api_key: str = Header(...)):
-        expected_api_key = os.environ.get("ADMIN_API_KEY")
-        if not expected_api_key:
-            logger.error("ADMIN_API_KEY is not set in the environment.")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Server configuration error.",
-            )
-        if x_api_key != expected_api_key:
-            logger.warning("Unauthorized access attempt with API Key: %s",
-                           x_api_key)
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Invalid API Key.",
-            )
-
-    async def validate_instance(self, instance: str) -> bool:
-        url = f"http://{instance}/v1/models"
-        try:
-            async with aiohttp.ClientSession(
-                    timeout=AIOHTTP_TIMEOUT) as client:
-                logger.info("Verifying %s ...", instance)
-                async with client.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if "data" in data and len(data["data"]) > 0:
-                            model_cur = data["data"][0].get("id", "")
-                            if model_cur == self.model:
-                                logger.info("Instance: %s could be added.",
-                                            instance)
-                                return True
-                            else:
-                                logger.warning("Mismatch model %s : %s != %s",
-                                               instance, model_cur, self.model)
-                                return False
-                        else:
-                            return False
-                    else:
-                        return False
-        except aiohttp.ClientError as e:
-            logger.error(str(e))
-            return False
-        except Exception as e:
-            logger.error(str(e))
-            return False
-
-    async def add_instance_endpoint(self, request: Request):
-        try:
-            data = await request.json()
-            logger.warning(str(data))
-            instance_type = data.get("type")
-            instance = data.get("instance")
-            if instance_type not in ["prefill", "decode"]:
-                raise HTTPException(status_code=400,
-                                    detail="Invalid instance type.")
-            if not instance or ":" not in instance:
-                raise HTTPException(status_code=400,
-                                    detail="Invalid instance format.")
-            host, port_str = instance.split(":")
-            try:
-                if host != "localhost":
-                    ipaddress.ip_address(host)
-                port = int(port_str)
-                if not (0 < port < 65536):
-                    raise HTTPException(status_code=400,
-                                        detail="Invalid port number.")
-            except Exception as e:
-                raise HTTPException(status_code=400,
-                                    detail="Invalid instance address.") from e
-
-            is_valid = await self.validate_instance(instance)
-            if not is_valid:
-                raise HTTPException(status_code=400,
-                                    detail="Instance validation failed.")
-
-            if instance_type == "prefill":
-                with self.scheduling_policy.lock:
-                    if instance not in self.prefill_instances:
-                        self.prefill_instances.append(instance)
-                        self.prefill_cycler = itertools.cycle(
-                            self.prefill_instances)
-                    else:
-                        raise HTTPException(status_code=400,
-                                            detail="Instance already exists.")
-            else:
-                with self.scheduling_policy.lock:
-                    if instance not in self.decode_instances:
-                        self.decode_instances.append(instance)
-                        self.decode_cycler = itertools.cycle(
-                            self.decode_instances)
-                    else:
-                        raise HTTPException(status_code=400,
-                                            detail="Instance already exists.")
-
-            return JSONResponse(content={
-                "message":
-                f"Added {instance} to {instance_type}_instances."
-            })
-        except HTTPException as http_exc:
-            raise http_exc
-        except Exception as e:
-            logger.error("Error in add_instance_endpoint: %s", str(e))
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        register_routes(self.router, self)
 
     async def forward_request(self, url, data, use_chunked=True):
         async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
@@ -560,51 +268,14 @@ class Proxy:
             decode_instance=decode_instance,
             req_len=req_len)
 
-    async def get_status(self):
-        status = {
-            "prefill_node_count": len(self.prefill_instances),
-            "decode_node_count": len(self.decode_instances),
-            "prefill_nodes": self.prefill_instances,
-            "decode_nodes": self.decode_instances,
-        }
-        return status
-
     def get_total_token_length(self, prompt):
-        fake_len = 100
-        if prompt is None:
-            return 0
-        if isinstance(prompt, str):
-            return len(self.tokenizer(prompt)["input_ids"])
-        elif isinstance(prompt, list):
-            if len(prompt) == 0:
-                return 0
-            # Single flat list of ints — already tokenized token IDs
-            if all(isinstance(x, int) for x in prompt):
-                return len(prompt)
-            if all(isinstance(p, str) for p in prompt):
-                return sum(len(self.tokenizer(p)["input_ids"]) for p in prompt)
-            if all(
-                isinstance(p, list) and all(isinstance(x, int) for x in p)
-                for p in prompt
-            ):
-                # Nested list of ints — multiple already-tokenized sequences
-                return sum(len(p) for p in prompt)
-            if all(isinstance(p, dict) for p in prompt):
-                # Multimodal content array — extract text parts only
-                total = 0
-                for p in prompt:
-                    if "text" in p:
-                        total += len(self.tokenizer(p["text"])["input_ids"])
-                return total
-            logger.error(
-                "Unsupported prompt format: %s / nested types. Value: %r",
-                type(prompt),
-                prompt,
-            )
-            return fake_len
-        else:
-            logger.error("Unsupported prompt type: %s", type(prompt))
-            return fake_len
+        """Compute total token length — delegates to :func:`utils.get_total_token_length`."""
+        try:
+            from .utils import get_total_token_length as _get_total_token_length
+        except ImportError:
+            from utils import get_total_token_length as _get_total_token_length
+
+        return _get_total_token_length(self.tokenizer, prompt)
 
     def exception_handler(self, prefill_instance=None, decode_instance=None, req_len=None):
         if prefill_instance or decode_instance:
@@ -632,216 +303,101 @@ class Proxy:
             if decode_instance:
                 self.registry.record_failure(decode_instance)
 
-    async def create_completion(self, raw_request: Request):
-        return await self._handle_completion("/v1/completions", raw_request, is_chat=False)
+    async def get_from_instance(self, path: str, is_full_instancelist: int = 0):
+        """Fetch data from backend instance(s) via GET."""
+        if not self.prefill_instances:
+            return JSONResponse(content={"error": "No instances available"}, status_code=500)
 
-    async def create_chat_completion(self, raw_request: Request):
-        return await self._handle_completion("/v1/chat/completions", raw_request, is_chat=True)
-
-    def _validate_completion_request(self, request, is_chat):
-        """Validate required fields. Returns JSONResponse on error, None on success."""
-        if is_chat:
-            if "messages" not in request:
-                return JSONResponse(
-                    {"error": {"message": "Missing required field: messages", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-            if not isinstance(request["messages"], list):
-                return JSONResponse(
-                    {"error": {"message": "Field messages must be a list", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
+        if is_full_instancelist == 0:
+            instances = [self.prefill_instances[0]]
         else:
-            if "prompt" not in request:
-                return JSONResponse(
-                    {"error": {"message": "Missing required field: prompt", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-        return None
+            instances = self.prefill_instances + self.decode_instances
 
-    def _extract_prompt_info(self, request, is_chat):
-        """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
-        if is_chat:
-            total_length = 0
-            prompt_parts = []
-            for msg in request["messages"]:
-                content = msg.get("content")
-                if content is None:
-                    continue
-                if isinstance(content, str):
-                    total_length += self.get_total_token_length(content)
-                    prompt_parts.append(content)
-                elif isinstance(content, list):
-                    # Multimodal content array — extract text parts
-                    for part in content:
-                        if isinstance(part, dict) and part.get("type") == "text":
-                            text = part.get("text", "")
-                            total_length += self.get_total_token_length(text)
-                            prompt_parts.append(text)
-            max_tokens = request.get("max_completion_tokens", 0)
-            if max_tokens == 0:
-                max_tokens = request.get("max_tokens", 0)
-            prompt_text = " ".join(prompt_parts)
-        else:
-            prompt = request.get("prompt")
-            total_length = self.get_total_token_length(prompt)
-            max_tokens = request.get("max_tokens", 0)
-            prompt_text = prompt if isinstance(prompt, str) else str(prompt)
-        return total_length, max_tokens, prompt_text
-
-    def _build_kv_prepare_request(self, request, is_chat):
-        """Build the KV-prepare request with max_tokens=1."""
-        kv_prepare_request = request.copy()
-        kv_prepare_request["max_tokens"] = 1
-        if is_chat:
-            kv_prepare_request["max_completion_tokens"] = 1
-        return kv_prepare_request
-
-    async def _handle_completion(self, endpoint, raw_request, is_chat):
-        """Unified completion handler for both /v1/completions and /v1/chat/completions."""
-        _metrics_start = track_request_start(endpoint)
-        handler_name = "create_chat_completion" if is_chat else "create_completion"
-        try:
-            try:
-                request = await raw_request.json()
-            except (json.JSONDecodeError, ValueError):
-                return JSONResponse(
-                    {"error": {"message": "Invalid JSON in request body", "type": "invalid_request_error"}},
-                    status_code=400,
-                )
-
-            error_resp = self._validate_completion_request(request, is_chat)
-            if error_resp:
-                return error_resp
-
-            prefill_instance = None
-            decode_instance = None
-
-            kv_prepare_request = self._build_kv_prepare_request(request, is_chat)
-
-            start_time = time.time()
-            total_length, max_tokens, prompt_text = self._extract_prompt_info(request, is_chat)
-            end_time = time.time()
-            log_info_green(
-                f"{handler_name} -- prompt length: {total_length}, "
-                f"max tokens: {max_tokens}, "
-                f"tokenizer took {(end_time - start_time) * 1000:.2f} ms"
-            )
-
-            # Extract scheduling context for advanced policies
-            _session_id = (
-                raw_request.headers.get("x-session-id")
-                or request.get("user")
-                or (raw_request.client.host if raw_request.client else None)
-            )
-            _sched_kwargs = {
-                "header": raw_request.headers.get("x-session-id"),
-                "session_id": _session_id,
-                "user": request.get("user"),
-                "client_ip": (
-                    raw_request.client.host if raw_request.client else None
-                ),
-                "prompt": prompt_text,
-            }
-
-            prefill_instance = self.schedule(self.prefill_cycler,
-                                             is_prompt=True,
-                                             request_len=total_length,
-                                             max_tokens=1,
-                                             **_sched_kwargs)
-
-            decode_instance = self.schedule(self.decode_cycler,
-                                            is_prompt=False,
-                                            request_len=total_length,
-                                            max_tokens=max_tokens,
-                                            **_sched_kwargs)
-
-            if prefill_instance is None or decode_instance is None:
-                log_info_red("No available instance can handle the request. ")
-                self.exception_handler(
-                    prefill_instance=prefill_instance,
-                    decode_instance=decode_instance,
-                    req_len=total_length
-                )
-                return JSONResponse(
-                    {"error": {"message": "No available instance can handle the request", "type": "proxy_error"}},
-                    status_code=503,
-                )
-
-            value = b''
-            try:
-                async for chunk in self.forward_request(
-                        f"http://{prefill_instance}{endpoint}",
-                        kv_prepare_request):
-                    value += chunk
-            except HTTPException as http_exc:
-                self.exception_handler(prefill_instance, decode_instance, total_length)
-                self._record_failure(prefill_instance, decode_instance)
-                raise http_exc
-
-            # Perform kv recv and decoding stage
-            value = value.strip().decode("utf-8").removesuffix(
-                "data: [DONE]").encode("utf-8")
-
-            async def streaming_response(value):
-                if value:
-                    yield value
-                else:
-                    yield b""
-
-            generator_p = streaming_response(value)
-            try:
-                generator_d = self.forward_request(
-                    f"http://{decode_instance}{endpoint}", request)
-            except HTTPException as http_exc:
-                self.exception_handler(prefill_instance, decode_instance, total_length)
-                self._record_failure(prefill_instance, decode_instance)
-                raise http_exc
-
-            if request.get("stream", False):
-                generator_class = self.generator
-            else:
-                # For stream=False request, cannot use P first token
-                generator_class = D_first_token_generator
-            final_generator = generator_class(generator_p,
-                                              generator_d,
-                                              self,
-                                              prefill_instance,
-                                              decode_instance,
-                                              req_len=total_length)
-            media_type = (
-                "text/event-stream"
-                if request.get("stream", False)
-                else "application/json"
-            )
-            async def wrapped_generator():
+        results = {}
+        async with aiohttp.ClientSession() as session:
+            for inst in instances:
+                url = f"http://{inst}{path}"
                 try:
-                    async for chunk in final_generator:
-                        yield chunk
-                except CancelledError:
-                    logger.warning(
-                        "[0]Client disconnected during %s (CancelledError)",
-                        handler_name,
-                    )
+                    async with session.get(url) as resp:
+                        try:
+                            data = await resp.json()
+                            dtype = "json"
+                        except aiohttp.ContentTypeError:
+                            data = await resp.text()
+                            dtype = "text"
+                        results[inst] = {
+                            "status": resp.status,
+                            "type": dtype,
+                            "data": data,
+                        }
                 except Exception as e:
-                    logger.error("[1] Exception in wrapped_generator: %s", str(e))
-                    raise
-                finally:
-                    track_request_end(endpoint, _metrics_start)
-            return StreamingResponse(wrapped_generator(), media_type=media_type)
-        except HTTPException:
-            track_request_end(endpoint, _metrics_start)
-            raise
-        except Exception:
-            track_request_end(endpoint, _metrics_start)
-            logger.error("Error in %s: %s", handler_name, sys.exc_info()[1])
+                    results[inst] = {"status": 500, "error": str(e)}
+                    logger.warning("Failed to fetch %s from %s: %s", path, inst, e)
+
+        return JSONResponse(content=results, status_code=200)
+
+    async def post_to_instance(self, request: Request, path: str, json_template: dict):
+        """Forward a POST request to a backend instance."""
+        body = await request.json()
+
+        missing = [k for k in json_template.keys() if k not in body]
+        if missing:
             return JSONResponse(
-                {"error": {"message": "Internal proxy error", "type": "proxy_error"}},
+                {"error": f"Missing required fields: {', '.join(missing)}"},
+                status_code=400,
+            )
+
+        payload = json_template.copy()
+        payload.update(body)
+
+        url = f"http://{self.prefill_instances[0]}{path}"
+        try:
+            async with aiohttp.ClientSession() as session, \
+                    session.post(url, json=payload) as resp:
+                try:
+                    content = await resp.json()
+                except aiohttp.ContentTypeError:
+                    content = {"raw": await resp.text()}
+                return JSONResponse(content, status_code=resp.status)
+        except Exception as e:
+            return JSONResponse(
+                {"error": f"Failed to fetch {url}, reason: {str(e)}"},
                 status_code=500,
             )
 
-    def remove_instance_endpoint(self, instance_type, instance):
-        return
+    async def validate_instance(self, instance: str) -> bool:
+        """Validate that an instance is reachable and serves the correct model."""
+        url = f"http://{instance}/v1/models"
+        try:
+            async with aiohttp.ClientSession(
+                    timeout=AIOHTTP_TIMEOUT) as client:
+                logger.info("Verifying %s ...", instance)
+                async with client.get(url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if "data" in data and len(data["data"]) > 0:
+                            model_cur = data["data"][0].get("id", "")
+                            if model_cur == self.model:
+                                logger.info("Instance: %s could be added.", instance)
+                                return True
+                            else:
+                                logger.warning(
+                                    "Mismatch model %s : %s != %s",
+                                    instance, model_cur, self.model,
+                                )
+                                return False
+                        else:
+                            return False
+                    else:
+                        return False
+        except aiohttp.ClientError as e:
+            logger.error(str(e))
+            return False
+        except Exception as e:
+            logger.error(str(e))
+            return False
+
+
 
 def _create_scheduling_policy(
     config: ProxyConfig,
