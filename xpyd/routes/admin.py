@@ -6,7 +6,7 @@ import itertools
 import logging
 import os
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Header, Request
 
 from xpyd.errors import INVALID_REQUEST, SERVER_ERROR, error_response
 from fastapi.responses import JSONResponse
@@ -17,14 +17,20 @@ logger = logging.getLogger("xpyd.proxy")
 def register(router: APIRouter, server) -> None:
     """Register admin routes on *router*."""
 
-    def api_key_authenticate(x_api_key: str = Header(...)):
+    def _authenticate_api_key(x_api_key: str):
+        """Validate admin API key. Returns error_response or None."""
         expected_api_key = os.environ.get("ADMIN_API_KEY")
         if not expected_api_key:
             logger.error("ADMIN_API_KEY is not set in the environment.")
-            raise HTTPException(status_code=500, detail="Server configuration error")
+            return error_response(
+                "Server configuration error", SERVER_ERROR, 500
+            )
         if x_api_key != expected_api_key:
             logger.warning("Unauthorized access attempt on admin endpoint")
-            raise HTTPException(status_code=403, detail="Forbidden: Invalid API Key")
+            return error_response(
+                "Forbidden: Invalid API Key", INVALID_REQUEST, 403
+            )
+        return None
 
     async def get_status():
         return {
@@ -34,7 +40,14 @@ def register(router: APIRouter, server) -> None:
             "decode_nodes": server.decode_instances,
         }
 
-    async def add_instance_endpoint(request: Request):
+    async def add_instance_endpoint(
+        request: Request,
+        x_api_key: str = Header(...),
+    ):
+        auth_error = _authenticate_api_key(x_api_key)
+        if auth_error:
+            return auth_error
+
         try:
             data = await request.json()
             logger.warning(str(data))
@@ -77,8 +90,6 @@ def register(router: APIRouter, server) -> None:
             return JSONResponse(content={
                 "message": f"Added {instance} to {instance_type}_instances."
             })
-        except HTTPException as http_exc:
-            raise http_exc
         except Exception as e:
             logger.error("Error in add_instance_endpoint: %s", str(e))
             return error_response(f"Internal error: {e}", SERVER_ERROR, 500)
@@ -87,5 +98,5 @@ def register(router: APIRouter, server) -> None:
         return
 
     router.get("/status", response_class=JSONResponse)(get_status)
-    router.post("/instances/add", dependencies=[Depends(api_key_authenticate)])(add_instance_endpoint)
+    router.post("/instances/add")(add_instance_endpoint)
     router.options("/status")(lambda: None)
