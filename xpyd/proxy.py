@@ -288,7 +288,10 @@ class Proxy:
 
     async def post_to_instance(self, request: Request, path: str, json_template: dict) -> JSONResponse:
         """Forward a POST request to a backend instance."""
-        body = await request.json()
+        try:
+            body = await request.json()
+        except (json.JSONDecodeError, ValueError):
+            return error_response("Invalid JSON in request body", INVALID_REQUEST, 400)
 
         missing = [k for k in json_template.keys() if k not in body]
         if missing:
@@ -310,6 +313,7 @@ class Proxy:
                     content = {"raw": await resp.text()}
                 return JSONResponse(content, status_code=resp.status)
         except Exception:
+            logger.exception("Failed to forward request to %s", url)
             return error_response(f"Failed to forward request to {url}", SERVER_ERROR, 500)
 
     async def validate_instance(self, instance: str) -> bool:
