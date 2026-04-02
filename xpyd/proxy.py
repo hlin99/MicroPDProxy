@@ -199,8 +199,11 @@ class Proxy:
                     "Bad Gateway: Error communicating with upstream server.",
                 ) from e
             except Exception as e:
-                logger.error("Unexpected error: %s", str(e))
-                raise HTTPException(status_code=500, detail=str(e)) from e
+                logger.exception("Unexpected error in forward_request")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Internal proxy error",
+                ) from e
 
     def schedule(self,
                  cycler: itertools.cycle,
@@ -281,7 +284,7 @@ class Proxy:
                             "data": data,
                         }
                 except Exception as e:
-                    results[inst] = {"status": 500, "error": str(e)}  # per-instance inline error
+                    results[inst] = {"status": 500, "error": "Failed to connect to instance"}
                     logger.warning("Failed to fetch %s from %s: %s", path, inst, e)
 
         return JSONResponse(content=results, status_code=200)
