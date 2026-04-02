@@ -167,6 +167,20 @@ class InstanceRegistry:
             }
             return sorted(models)
 
+    def update_model(self, address: str, model: str) -> None:
+        """Update the model name for a registered instance.
+
+        Args:
+            address: Instance address.
+            model: New model name.
+
+        Raises:
+            KeyError: If address is not registered.
+        """
+        with self._lock:
+            instance = self._get_instance(address)
+            instance.model = model
+
     def mark_healthy(self, address: str) -> None:
         """Mark an instance as healthy (called by health monitor).
 

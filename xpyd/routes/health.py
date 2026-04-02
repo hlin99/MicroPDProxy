@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """Health, info, and metrics route handlers."""
 
-import time
-
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 
 from xpyd.metrics import get_metrics
+
+# Fixed epoch timestamp for model listing (avoids changing on every request)
+_MODEL_CREATED_EPOCH = 0
 
 
 def register(router: APIRouter, server) -> None:
@@ -27,7 +28,7 @@ def register(router: APIRouter, server) -> None:
                     {
                         "id": m,
                         "object": "model",
-                        "created": int(time.time()),
+                        "created": _MODEL_CREATED_EPOCH,
                         "owned_by": "system",
                     }
                     for m in models

@@ -141,15 +141,25 @@ async def handle_completion(endpoint, raw_request, server, is_chat):
         )
 
         if prefill_instance is None or decode_instance is None:
+            requested_model = request.get("model", "")
             logger.warning(
                 "No available instance",
-                extra={"endpoint": endpoint, "prompt_length": total_length},
+                extra={"endpoint": endpoint, "prompt_length": total_length, "model": requested_model},
             )
             server.exception_handler(
                 prefill_instance=prefill_instance,
                 decode_instance=decode_instance,
                 req_len=total_length,
             )
+            # If a specific model was requested and is not known, return 404
+            if requested_model and server.registry is not None:
+                known_models = server.registry.get_registered_models()
+                if requested_model not in known_models:
+                    return error_response(
+                        f"The model '{requested_model}' does not exist",
+                        INVALID_REQUEST,
+                        404,
+                    )
             return error_response("No available instance can handle the request", PROXY_ERROR, 503)
 
         value = b""

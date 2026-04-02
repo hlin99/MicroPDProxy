@@ -234,8 +234,8 @@ async def test_multi_model_routing_correct(multi_model_client: AsyncClient):
 
 
 @pytest.mark.anyio
-async def test_multi_model_unknown_model_503(multi_model_client: AsyncClient):
-    """Request with unknown model should return 503."""
+async def test_multi_model_unknown_model_404(multi_model_client: AsyncClient):
+    """Request with unknown model should return 404."""
     resp = await multi_model_client.post(
         "/v1/chat/completions",
         json={
@@ -244,7 +244,7 @@ async def test_multi_model_unknown_model_503(multi_model_client: AsyncClient):
             "max_tokens": 5,
         },
     )
-    assert resp.status_code == 503
+    assert resp.status_code == 404
     data = resp.json()
     assert "error" in data
 

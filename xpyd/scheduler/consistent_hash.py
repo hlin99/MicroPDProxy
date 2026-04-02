@@ -182,7 +182,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
         """
         if self._registry is not None:
             role = "prefill" if is_prompt else "decode"
-            candidates = set(self._registry.get_available_instances(role))
+            candidates = set(self._registry.get_available_instances(role, model=model))
             if candidates:
                 return self.select_from(
                     candidates,

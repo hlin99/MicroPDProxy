@@ -27,6 +27,8 @@ class NodeDiscovery:
 
     On startup, begins probing all configured nodes. Tracks which are
     healthy so the proxy can decide when to start accepting requests.
+    Also probes ``/v1/models`` to auto-detect model names served by
+    each instance and updates the registry accordingly.
     """
 
     def __init__(
@@ -35,11 +37,13 @@ class NodeDiscovery:
         decode_instances: List[str],
         probe_interval: float = 10.0,
         wait_timeout: float = 600.0,
+        registry=None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.probe_interval = probe_interval
         self.wait_timeout = wait_timeout
+        self.registry = registry
 
         self.healthy_prefill: Set[str] = set()
         self.healthy_decode: Set[str] = set()
@@ -126,7 +130,7 @@ class NodeDiscovery:
     async def _probe_node(
         self, session: aiohttp.ClientSession, instance: str, role: str
     ):
-        """Probe a single node's /health endpoint."""
+        """Probe a single node's /health endpoint and /v1/models for model auto-detection."""
         url = f"http://{instance}/health"
         healthy_set = (
             self.healthy_prefill if role == "prefill" else self.healthy_decode
@@ -148,7 +152,35 @@ class NodeDiscovery:
                             role,
                             instance,
                         )
+                    # Probe /v1/models for model auto-detection
+                    await self._probe_models(session, instance)
                 else:
                     healthy_set.discard(instance)
         except Exception:
             healthy_set.discard(instance)
+
+    async def _probe_models(
+        self, session: aiohttp.ClientSession, instance: str
+    ):
+        """Probe /v1/models on a healthy instance to auto-detect model name."""
+        if self.registry is None:
+            return
+        try:
+            models_url = f"http://{instance}/v1/models"
+            async with session.get(models_url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    models_data = data.get("data", [])
+                    if models_data:
+                        model_name = models_data[0].get("id", "")
+                        if model_name:
+                            self.registry.update_model(instance, model_name)
+                            logger.info(
+                                "Auto-detected model %r on %s",
+                                model_name,
+                                instance,
+                            )
+        except Exception:
+            logger.debug(
+                "Failed to probe /v1/models on %s", instance
+            )
