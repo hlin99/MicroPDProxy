@@ -33,8 +33,6 @@ scheduling: "loadbalanced"
 # Generate first token on prefill node (default: false)
 generator_on_p_node: false
 
-# Round-robin mode (default: false, use scheduling instead)
-
 # Startup probe settings
 startup:
   wait_timeout_seconds: 600
