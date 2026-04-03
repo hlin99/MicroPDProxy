@@ -210,6 +210,8 @@ class Proxy:
         # Determine scheduler strategy for this model
         # Fallback chain: model-level → global policy type → load_balanced
         strategy = self.model_schedulers.get(model, "")
+        # Normalize: "load_balanced" → "loadbalanced", "round_robin" → "roundrobin"
+        strategy = strategy.replace("_", "")
 
         if not strategy:
             # Fall back to global policy type
