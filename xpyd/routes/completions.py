@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import json
 import logging
 import sys
@@ -25,7 +23,7 @@ logger = logging.getLogger("xpyd.proxy")
 # ---------------------------------------------------------------------------
 
 
-def validate_completion_request(request, is_chat) -> Optional[JSONResponse]:
+def validate_completion_request(request, is_chat) -> JSONResponse | None:
     """Validate required fields. Returns JSONResponse on error, None on success."""
     if is_chat:
         if "messages" not in request:
@@ -38,7 +36,7 @@ def validate_completion_request(request, is_chat) -> Optional[JSONResponse]:
     return None
 
 
-def extract_prompt_info(request, is_chat, server) -> Tuple[int, int, str]:
+def extract_prompt_info(request, is_chat, server) -> tuple[int, int, str]:
     """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
     if is_chat:
         total_length = 0
