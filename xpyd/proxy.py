@@ -185,7 +185,12 @@ class Proxy:
         return self.model_schedulers.get(model, self.scheduling_policy)
 
     def schedule_dual(self, model: str, **kwargs) -> Optional[str]:
-        """Schedule a dual instance for the given model."""
+        """Schedule a dual instance for the given model.
+
+        Uses round-robin across available dual instances for the model.
+        Unused kwargs (request_len, max_tokens) are accepted for future
+        load-aware scheduling but currently ignored.
+        """
         if model not in self.dual_instances:
             return None
         instances = self.dual_instances[model]
@@ -196,12 +201,18 @@ class Proxy:
             available = self.registry.get_dual_instances(model=model)
             if not available:
                 return None
-            # Simple round-robin over available dual instances
-            # (Per-model scheduler cannot be used directly since schedulers
-            # are role-aware and dual instances are isolated from P/D roles)
-            return available[0]
-        # No registry: return first instance
-        return instances[0]
+            # Round-robin over available dual instances
+            if not hasattr(self, "_dual_rr_counters"):
+                self._dual_rr_counters: dict[str, int] = {}
+            idx = self._dual_rr_counters.get(model, 0) % len(available)
+            self._dual_rr_counters[model] = idx + 1
+            return available[idx]
+        # No registry: round-robin over configured instances
+        if not hasattr(self, "_dual_rr_counters"):
+            self._dual_rr_counters: dict[str, int] = {}
+        idx = self._dual_rr_counters.get(model, 0) % len(instances)
+        self._dual_rr_counters[model] = idx + 1
+        return instances[idx]
 
     def schedule_dual_completion(
         self,

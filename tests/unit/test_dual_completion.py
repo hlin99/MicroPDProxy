@@ -15,18 +15,21 @@ class TestIsDualModel:
         proxy = MagicMock()
         proxy.dual_instances = {"qwen-2": ["10.0.0.1:8000"]}
         from xpyd.proxy import Proxy
+
         assert Proxy._is_dual_model(proxy, "qwen-2") is True
 
     def test_pd_model_not_dual(self):
         proxy = MagicMock()
         proxy.dual_instances = {}
         from xpyd.proxy import Proxy
+
         assert Proxy._is_dual_model(proxy, "llama-3") is False
 
     def test_empty_dual_list_not_dual(self):
         proxy = MagicMock()
         proxy.dual_instances = {"qwen-2": []}
         from xpyd.proxy import Proxy
+
         assert Proxy._is_dual_model(proxy, "qwen-2") is False
 
 
@@ -42,6 +45,7 @@ class TestScheduleDual:
 
     def test_schedule_dual_returns_instance(self):
         from xpyd.scheduler import RoundRobinSchedulingPolicy
+
         policy = RoundRobinSchedulingPolicy(registry=self.reg)
         proxy = MagicMock()
         proxy.dual_instances = {"qwen-2": ["10.0.0.1:8000", "10.0.0.2:8000"]}
@@ -50,6 +54,7 @@ class TestScheduleDual:
         proxy.model_schedulers = {}
         proxy._get_model_scheduler = lambda model: policy
         from xpyd.proxy import Proxy
+
         result = Proxy.schedule_dual(proxy, "qwen-2")
         assert result in ("10.0.0.1:8000", "10.0.0.2:8000")
 
@@ -58,6 +63,7 @@ class TestScheduleDual:
         proxy.dual_instances = {}
         proxy.registry = self.reg
         from xpyd.proxy import Proxy
+
         result = Proxy.schedule_dual(proxy, "nonexistent")
         assert result is None
 
@@ -70,6 +76,7 @@ class TestScheduleDualCompletion:
         proxy = MagicMock()
         proxy.scheduling_policy = policy
         from xpyd.proxy import Proxy
+
         Proxy.schedule_dual_completion(proxy, "10.0.0.1:8000", req_len=100)
         policy.schedule_completion.assert_called_once_with(
             prefill_instance=None,
@@ -88,6 +95,7 @@ class TestPerModelScheduler:
         proxy.model_schedulers = {"qwen-2": model_sched}
         proxy.scheduling_policy = global_sched
         from xpyd.proxy import Proxy
+
         result = Proxy._get_model_scheduler(proxy, "qwen-2")
         assert result is model_sched
 
@@ -97,5 +105,6 @@ class TestPerModelScheduler:
         proxy.model_schedulers = {}
         proxy.scheduling_policy = global_sched
         from xpyd.proxy import Proxy
+
         result = Proxy._get_model_scheduler(proxy, "unknown-model")
         assert result is global_sched

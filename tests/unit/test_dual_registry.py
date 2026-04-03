@@ -16,8 +16,10 @@ class TestRegistryDualIsolation:
         self.reg.add("dual", "10.0.0.3:8000", model="qwen-2")
         self.reg.add("dual", "10.0.0.4:8000", model="qwen-2")
         for addr in [
-            "10.0.0.1:8000", "10.0.0.2:8000",
-            "10.0.0.3:8000", "10.0.0.4:8000",
+            "10.0.0.1:8000",
+            "10.0.0.2:8000",
+            "10.0.0.3:8000",
+            "10.0.0.4:8000",
         ]:
             self.reg.mark_healthy(addr)
 
@@ -67,5 +69,6 @@ class TestRegistryDualAdd:
     def test_invalid_role_rejected(self):
         reg = InstanceRegistry()
         import pytest
+
         with pytest.raises(ValueError, match="Invalid role"):
             reg.add("unknown", "10.0.0.1:8000")

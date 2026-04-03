@@ -5,13 +5,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
 import time
 from asyncio import CancelledError
 from typing import TYPE_CHECKING
 
-import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -21,10 +19,6 @@ if TYPE_CHECKING:
     from xpyd.proxy import Proxy
 
 from xpyd.metrics import track_request_end, track_request_start
-
-AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
-    total=None, connect=None, sock_read=None, sock_connect=None
-)
 
 logger = logging.getLogger("xpyd.proxy")
 
@@ -302,6 +296,7 @@ async def _handle_dual_completion(
         generator = server.forward_request(url, request)
 
         async def wrapped():
+            _failed = False
             try:
                 async for chunk in generator:
                     yield chunk
@@ -311,37 +306,48 @@ async def _handle_dual_completion(
                     handler_name,
                 )
             except Exception as e:
+                _failed = True
                 logger.error("Exception in dual stream: %s", str(e))
                 if server.registry is not None:
                     server.registry.record_failure(instance)
                 raise
             finally:
                 server.schedule_dual_completion(instance, req_len=total_length)
-                if server.registry is not None:
+                if not _failed and server.registry is not None:
                     server.registry.record_success(instance)
                 track_request_end(endpoint, metrics_start)
 
         return StreamingResponse(wrapped(), media_type="text/event-stream")
     else:
-        # Non-streaming: forward request and return JSON directly
+        # Non-streaming: forward request using server.forward_request()
+        # for consistent auth, timeouts, and connection handling.
         try:
-            async with aiohttp.ClientSession(
-                timeout=AIOHTTP_TIMEOUT
-            ) as session:
-                headers = {
-                    "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
-                }
-                async with session.post(url, json=request, headers=headers) as resp:
-                    data = await resp.json()
-                    server.schedule_dual_completion(
-                        instance, req_len=total_length,
-                    )
-                    if server.registry is not None:
-                        server.registry.record_success(instance)
-                    track_request_end(endpoint, metrics_start)
-                    return JSONResponse(data, status_code=resp.status)
+            value = b""
+            async for chunk in server.forward_request(url, request):
+                value += chunk
+            data = json.loads(value)
+            server.schedule_dual_completion(
+                instance, req_len=total_length,
+            )
+            if server.registry is not None:
+                server.registry.record_success(instance)
+            track_request_end(endpoint, metrics_start)
+            return JSONResponse(data, status_code=200)
+        except HTTPException as http_exc:
+            server.schedule_dual_completion(
+                instance, req_len=total_length,
+            )
+            if server.registry is not None:
+                server.registry.record_failure(instance)
+            track_request_end(endpoint, metrics_start)
+            return error_response(
+                str(http_exc.detail), PROXY_ERROR, http_exc.status_code,
+            )
         except Exception as e:
             logger.error("Error in dual non-streaming: %s", str(e))
+            server.schedule_dual_completion(
+                instance, req_len=total_length,
+            )
             if server.registry is not None:
                 server.registry.record_failure(instance)
             track_request_end(endpoint, metrics_start)

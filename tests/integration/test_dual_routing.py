@@ -135,7 +135,7 @@ def dual_nodes():
         threading.Thread(target=srv.run, daemon=True).start()
 
     deadline = time.monotonic() + 10
-    for name, port in ports.items():
+    for _name, port in ports.items():
         url = f"http://127.0.0.1:{port}/health"
         while time.monotonic() < deadline:
             try:
@@ -411,12 +411,14 @@ def _generate_random_deployment(addrs, seed):
             models.append({"name": name, "mode": "dual", "instances": assigned})
         else:
             split = rng.randint(1, len(assigned) - 1)
-            models.append({
-                "name": name,
-                "mode": "pd",
-                "prefill": assigned[:split],
-                "decode": assigned[split:],
-            })
+            models.append(
+                {
+                    "name": name,
+                    "mode": "pd",
+                    "prefill": assigned[:split],
+                    "decode": assigned[split:],
+                }
+            )
 
     return models
 
