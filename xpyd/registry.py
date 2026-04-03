@@ -323,6 +323,21 @@ class InstanceRegistry:
             instance = self._get_instance(address)
             instance.active_request_count = max(0, instance.active_request_count - 1)
 
+    def get_active_requests(self, address: str) -> int:
+        """Return the active request count for an instance.
+
+        Args:
+            address: Instance address.
+
+        Returns:
+            Active request count, or 0 if not registered.
+        """
+        with self._lock:
+            try:
+                return self._get_instance(address).active_request_count
+            except KeyError:
+                return 0
+
     def _get_instance(self, address: str) -> _InstanceRecord:
         """Get instance by address or raise KeyError. Must hold lock."""
         try:

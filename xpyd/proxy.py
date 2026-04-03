@@ -156,7 +156,8 @@ class Proxy:
                      [Request], StreamingResponse]] = None,
                  generator_on_p_node: bool = False,
                  registry: Optional[InstanceRegistry] = None,
-                 dual_instances: Optional[dict[str, list[str]]] = None):
+                 dual_instances: Optional[dict[str, list[str]]] = None,
+                 model_schedulers: Optional[dict[str, str]] = None):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.prefill_cycler = itertools.cycle(prefill_instances)
@@ -165,6 +166,13 @@ class Proxy:
         self.scheduling_policy = scheduling_policy
         self.registry = registry
         self.dual_instances = dual_instances or {}
+        self.model_schedulers = model_schedulers or {}
+        # Per-model dual cyclers for round-robin scheduling
+        self._dual_cyclers: dict[str, itertools.cycle] = {
+            m: itertools.cycle(addrs)
+            for m, addrs in self.dual_instances.items()
+        }
+        self._dual_rr_counters: dict[str, int] = {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
         self.router = APIRouter()
@@ -181,34 +189,60 @@ class Proxy:
     def schedule_dual(self, model: str, **kwargs) -> Optional[str]:
         """Schedule a dual instance for the given model.
 
-        Uses round-robin across available dual instances for the model.
-        Unused kwargs (request_len, max_tokens) are accepted for future
-        load-aware scheduling but currently ignored.
+        Scheduling strategy follows the per-model fallback chain:
+        model-level scheduler → global scheduling_policy → round-robin.
+
+        For 'loadbalanced': picks the instance with lowest active requests.
+        For 'roundrobin' and others: cycles through available instances.
+
+        kwargs (request_len, max_tokens) are accepted for future
+        load-aware scheduling extensions.
         """
         if model not in self.dual_instances:
             return None
         instances = self.dual_instances[model]
         if not instances:
             return None
-        # Use registry to filter available instances
+
+        # Determine available instances
         if self.registry is not None:
             available = self.registry.get_dual_instances(model=model)
             if not available:
                 return None
-            # Round-robin over available dual instances
-            if not hasattr(self, "_dual_rr_counters"):
-                self._dual_rr_counters: dict[str, int] = {}
+        else:
+            available = list(instances)
+
+        # Determine scheduler strategy for this model
+        strategy = self.model_schedulers.get(model, "")
+
+        # Load-balanced: pick instance with lowest active requests
+        if strategy == "loadbalanced" or (
+            not strategy and isinstance(self.scheduling_policy, LoadBalancedScheduler)
+        ):
+            selected = self._schedule_dual_load_balanced(available)
+        else:
+            # Round-robin (default for roundrobin, consistent_hash,
+            # power_of_two, cache_aware, and unknown strategies)
             idx = self._dual_rr_counters.get(model, 0) % len(available)
             self._dual_rr_counters[model] = idx + 1
             selected = available[idx]
+
+        if self.registry is not None:
             self.registry.increment_active_requests(selected)
-            return selected
-        # No registry: round-robin over configured instances
-        if not hasattr(self, "_dual_rr_counters"):
-            self._dual_rr_counters: dict[str, int] = {}
-        idx = self._dual_rr_counters.get(model, 0) % len(instances)
-        self._dual_rr_counters[model] = idx + 1
-        return instances[idx]
+        return selected
+
+    def _schedule_dual_load_balanced(self, available: list[str]) -> str:
+        """Pick the dual instance with the lowest active request count."""
+        if self.registry is None or len(available) == 1:
+            return available[0]
+        best = available[0]
+        best_load = self.registry.get_active_requests(best)
+        for addr in available[1:]:
+            load = self.registry.get_active_requests(addr)
+            if load < best_load:
+                best = addr
+                best_load = load
+        return best
 
     def schedule_dual_completion(
         self,
@@ -598,12 +632,23 @@ class ProxyServer:
             for addr in _registered:
                 self.registry.mark_healthy(addr)
 
-        # TODO: Per-model scheduler support for dual instances is deferred.
-        # Issue #113 design decision #3 specifies per-model scheduler
-        # fallback chain (model-level → global → load_balanced), but dual
-        # scheduling currently uses simple round-robin. When per-model
-        # scheduler integration is implemented, reconstruct model_schedulers
-        # here and wire it into schedule_dual().
+        # Build per-model scheduler config from models shorthand.
+        # Stores strategy *names* (not instances) — schedule_dual()
+        # interprets the strategy at scheduling time.
+        # Fallback chain: model-level → global → load_balanced (default).
+        model_scheduler_config = getattr(config, '_model_schedulers', {})
+        # Validate scheduler names at startup
+        for model_name, strategy_name in model_scheduler_config.items():
+            if not default_registry.has(strategy_name):
+                logger.warning(
+                    "Unknown scheduler %r for model %r; available: %s. "
+                    "Will fall back to global policy at runtime.",
+                    strategy_name, model_name,
+                    default_registry.list_policies(),
+                )
+                # Remove invalid entries so they don't confuse schedule_dual
+                model_scheduler_config.pop(model_name, None)
+
         global_policy = _create_scheduling_policy(
             config, scheduling_policy, self.registry,
             all_prefill=all_prefill, all_decode=all_decode,
@@ -619,6 +664,7 @@ class ProxyServer:
             generator_on_p_node=config.generator_on_p_node,
             registry=self.registry,
             dual_instances=dual_instances,
+            model_schedulers=model_scheduler_config,
         )
 
     def verify_model_config(self, instances: list, model: str) -> None:
