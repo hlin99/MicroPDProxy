@@ -213,16 +213,24 @@ class Proxy:
             available = list(instances)
 
         # Determine scheduler strategy for this model
+        # Fallback chain: model-level → global policy type → load_balanced
         strategy = self.model_schedulers.get(model, "")
 
+        if not strategy:
+            # Fall back to global policy type
+            if isinstance(self.scheduling_policy, LoadBalancedScheduler):
+                strategy = "loadbalanced"
+            elif isinstance(self.scheduling_policy, RoundRobinSchedulingPolicy):
+                strategy = "roundrobin"
+            else:
+                # Default fallback: load_balanced
+                strategy = "loadbalanced"
+
         # Load-balanced: pick instance with lowest active requests
-        if strategy == "loadbalanced" or (
-            not strategy and isinstance(self.scheduling_policy, LoadBalancedScheduler)
-        ):
+        if strategy == "loadbalanced":
             selected = self._schedule_dual_load_balanced(available)
         else:
-            # Round-robin (default for roundrobin, consistent_hash,
-            # power_of_two, cache_aware, and unknown strategies)
+            # Round-robin for 'roundrobin' and other strategies
             idx = self._dual_rr_counters.get(model, 0) % len(available)
             self._dual_rr_counters[model] = idx + 1
             selected = available[idx]
