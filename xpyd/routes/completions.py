@@ -40,7 +40,7 @@ def validate_completion_request(request: dict, is_chat: bool) -> JSONResponse | 
     return None
 
 
-def extract_prompt_info(request: dict, is_chat: bool, server: "Proxy") -> tuple[int, int, str]:
+def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[int, int, str]:
     """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
     if is_chat:
         total_length = 0
@@ -79,7 +79,7 @@ def build_kv_prepare_request(request: dict, is_chat: bool) -> dict:
     return kv_prepare_request
 
 
-async def handle_completion(endpoint: str, raw_request: Request, server: "Proxy", is_chat: bool) -> JSONResponse | StreamingResponse:
+async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, is_chat: bool) -> JSONResponse | StreamingResponse:
     """Unified completion handler for both /v1/completions and /v1/chat/completions."""
     _metrics_start = track_request_start(endpoint)
     handler_name = "create_chat_completion" if is_chat else "create_completion"
@@ -251,7 +251,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: "Proxy"
 # ---------------------------------------------------------------------------
 
 
-def register(router: APIRouter, server) -> None:
+def register(router: APIRouter, server: Proxy) -> None:
     """Register completion routes on *router*."""
 
     async def _validate_json(raw_request: Request):

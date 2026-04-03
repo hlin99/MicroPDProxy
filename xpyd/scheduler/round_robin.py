@@ -18,7 +18,7 @@ class RoundRobinSchedulingPolicy(SchedulingPolicy):
         logger.info("RoundRobinSchedulingPolicy initialized")
 
     def safe_next(self, cycler: itertools.cycle) -> str:
-        # Cycler always contains instance address strings; never empty at call site.
+        """Thread-safe next() on cycler. Returns str since cycler wraps instance addresses."""
         with self.lock:
             return next(cycler)
 
