@@ -18,6 +18,7 @@ class RoundRobinSchedulingPolicy(SchedulingPolicy):
         logger.info("RoundRobinSchedulingPolicy initialized")
 
     def safe_next(self, cycler: itertools.cycle) -> str:
+        """Thread-safe next() on cycler. Returns str since cycler wraps instance addresses."""
         with self.lock:
             return next(cycler)
 
