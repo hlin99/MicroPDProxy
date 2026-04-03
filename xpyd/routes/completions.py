@@ -326,13 +326,24 @@ async def _handle_dual_completion(
             async for chunk in server.forward_request(url, request):
                 value += chunk
             data = json.loads(value)
+            # Detect error responses from upstream and map to appropriate
+            # status code. forward_request yields raw bytes without status
+            # info, so we inspect the parsed JSON.
+            if "error" in data:
+                status_code = data["error"].get("code") or 502
+                if isinstance(status_code, str):
+                    status_code = 502
+            else:
+                status_code = 200
             server.schedule_dual_completion(
                 instance, req_len=total_length,
             )
-            if server.registry is not None:
+            if status_code < 400 and server.registry is not None:
                 server.registry.record_success(instance)
+            elif status_code >= 400 and server.registry is not None:
+                server.registry.record_failure(instance)
             track_request_end(endpoint, metrics_start)
-            return JSONResponse(data, status_code=200)
+            return JSONResponse(data, status_code=status_code)
         except HTTPException as http_exc:
             server.schedule_dual_completion(
                 instance, req_len=total_length,

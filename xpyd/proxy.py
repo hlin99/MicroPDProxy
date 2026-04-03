@@ -156,8 +156,7 @@ class Proxy:
                      [Request], StreamingResponse]] = None,
                  generator_on_p_node: bool = False,
                  registry: Optional[InstanceRegistry] = None,
-                 dual_instances: Optional[dict[str, list[str]]] = None,
-                 model_schedulers: Optional[dict[str, SchedulingPolicy]] = None):
+                 dual_instances: Optional[dict[str, list[str]]] = None):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.prefill_cycler = itertools.cycle(prefill_instances)
@@ -166,7 +165,6 @@ class Proxy:
         self.scheduling_policy = scheduling_policy
         self.registry = registry
         self.dual_instances = dual_instances or {}
-        self.model_schedulers = model_schedulers or {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
         self.router = APIRouter()
@@ -600,23 +598,16 @@ class ProxyServer:
             for addr in _registered:
                 self.registry.mark_healthy(addr)
 
-        # Build per-model scheduler instances
-        model_schedulers: dict[str, SchedulingPolicy] = {}
-        model_scheduler_config = getattr(config, '_model_schedulers', {})
+        # TODO: Per-model scheduler support for dual instances is deferred.
+        # Issue #113 design decision #3 specifies per-model scheduler
+        # fallback chain (model-level → global → load_balanced), but dual
+        # scheduling currently uses simple round-robin. When per-model
+        # scheduler integration is implemented, reconstruct model_schedulers
+        # here and wire it into schedule_dual().
         global_policy = _create_scheduling_policy(
             config, scheduling_policy, self.registry,
             all_prefill=all_prefill, all_decode=all_decode,
         )
-        for model_name, strategy_name in model_scheduler_config.items():
-            if default_registry.has(strategy_name):
-                model_schedulers[model_name] = default_registry.create(
-                    strategy_name, registry=self.registry,
-                )
-            else:
-                logger.warning(
-                    "Unknown scheduler %r for model %r, using global default",
-                    strategy_name, model_name,
-                )
 
         self.proxy_instance = Proxy(
             prefill_instances=all_prefill,
@@ -628,7 +619,6 @@ class ProxyServer:
             generator_on_p_node=config.generator_on_p_node,
             registry=self.registry,
             dual_instances=dual_instances,
-            model_schedulers=model_schedulers,
         )
 
     def verify_model_config(self, instances: list, model: str) -> None:
