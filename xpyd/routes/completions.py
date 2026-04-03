@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import time
 from asyncio import CancelledError
 from typing import TYPE_CHECKING
 
+import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
@@ -17,7 +19,12 @@ from xpyd.errors import INVALID_REQUEST, PROXY_ERROR, error_response
 
 if TYPE_CHECKING:
     from xpyd.proxy import Proxy
+
 from xpyd.metrics import track_request_end, track_request_start
+
+AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
+    total=None, connect=None, sock_read=None, sock_connect=None
+)
 
 logger = logging.getLogger("xpyd.proxy")
 
@@ -96,8 +103,6 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         prefill_instance = None
         decode_instance = None
 
-        kv_prepare_request = build_kv_prepare_request(request, is_chat)
-
         start_time = time.time()
         total_length, max_tokens, prompt_text = extract_prompt_info(
             request, is_chat, server
@@ -113,6 +118,18 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 "tokenizer_ms": round(elapsed_ms, 2),
             },
         )
+
+        requested_model = request.get("model", "")
+
+        # Dual-role fast path: single forward, no P→D split
+        if server._is_dual_model(requested_model):
+            return await _handle_dual_completion(
+                endpoint, request, raw_request, server,
+                requested_model, total_length, max_tokens, prompt_text,
+                _metrics_start, handler_name,
+            )
+
+        kv_prepare_request = build_kv_prepare_request(request, is_chat)
 
         _session_id = (
             raw_request.headers.get("x-session-id")
@@ -147,7 +164,6 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         )
 
         if prefill_instance is None or decode_instance is None:
-            requested_model = request.get("model", "")
             logger.warning(
                 "No available instance",
                 extra={"endpoint": endpoint, "prompt_length": total_length, "model": requested_model},
@@ -244,6 +260,94 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             {"error": {"message": "Internal proxy error", "type": "proxy_error"}},
             status_code=500,
         )
+
+
+async def _handle_dual_completion(
+    endpoint: str,
+    request: dict,
+    raw_request: Request,
+    server: Proxy,
+    model: str,
+    total_length: int,
+    max_tokens: int,
+    prompt_text: str,
+    metrics_start: float,
+    handler_name: str,
+) -> JSONResponse | StreamingResponse:
+    """Single-pass completion for dual-role instances."""
+    instance = server.schedule_dual(
+        model,
+        request_len=total_length,
+        max_tokens=max_tokens,
+    )
+    if instance is None:
+        # Check for unknown model
+        if model and server.registry is not None:
+            known_models = server.registry.get_registered_models()
+            if model not in known_models:
+                return error_response(
+                    f"The model '{model}' does not exist",
+                    INVALID_REQUEST,
+                    404,
+                )
+        return error_response(
+            "No available instance can handle the request",
+            PROXY_ERROR,
+            503,
+        )
+
+    url = f"http://{instance}{endpoint}"
+
+    if request.get("stream", False):
+        generator = server.forward_request(url, request)
+
+        async def wrapped():
+            try:
+                async for chunk in generator:
+                    yield chunk
+            except CancelledError:
+                logger.warning(
+                    "Client disconnected during dual %s (CancelledError)",
+                    handler_name,
+                )
+            except Exception as e:
+                logger.error("Exception in dual stream: %s", str(e))
+                if server.registry is not None:
+                    server.registry.record_failure(instance)
+                raise
+            finally:
+                server.schedule_dual_completion(instance, req_len=total_length)
+                if server.registry is not None:
+                    server.registry.record_success(instance)
+                track_request_end(endpoint, metrics_start)
+
+        return StreamingResponse(wrapped(), media_type="text/event-stream")
+    else:
+        # Non-streaming: forward request and return JSON directly
+        try:
+            async with aiohttp.ClientSession(
+                timeout=AIOHTTP_TIMEOUT
+            ) as session:
+                headers = {
+                    "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
+                }
+                async with session.post(url, json=request, headers=headers) as resp:
+                    data = await resp.json()
+                    server.schedule_dual_completion(
+                        instance, req_len=total_length,
+                    )
+                    if server.registry is not None:
+                        server.registry.record_success(instance)
+                    track_request_end(endpoint, metrics_start)
+                    return JSONResponse(data, status_code=resp.status)
+        except Exception as e:
+            logger.error("Error in dual non-streaming: %s", str(e))
+            if server.registry is not None:
+                server.registry.record_failure(instance)
+            track_request_end(endpoint, metrics_start)
+            return error_response(
+                "Internal proxy error", PROXY_ERROR, 500,
+            )
 
 
 # ---------------------------------------------------------------------------
