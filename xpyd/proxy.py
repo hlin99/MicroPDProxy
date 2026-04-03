@@ -232,7 +232,7 @@ class Proxy:
                  is_prompt: int = None,
                  request_len: Optional[int] = None,
                  max_tokens: Optional[int] = None,
-                 **kwargs) -> str:
+                 **kwargs) -> Optional[str]:
         model = kwargs.pop("model", "")
         return self.scheduling_policy.schedule(
             cycler, is_prompt, request_len, max_tokens, model=model, **kwargs,
@@ -437,7 +437,7 @@ class ProxyServer:
     ):
         self.config = config
         # Skip model verification for multi-model (instances) config
-        if not config.instances:
+        if config.instances is None:
             self.verify_model_config(config.prefill, config.model)
             self.verify_model_config(config.decode, config.model)
         self.port = config.port
@@ -454,19 +454,42 @@ class ProxyServer:
         _registered_prefill: set[str] = set()
         _registered_decode: set[str] = set()
 
-        if config.instances:
+        if config.instances is not None:
             # Multi-model: register from instances list
             for entry in config.instances:
                 addr = entry.address
-                if entry.role == "prefill" and addr not in _registered_prefill:
+                if entry.role == "prefill":
+                    if addr in _registered_prefill:
+                        logger.warning(
+                            "Duplicate prefill address %s (model=%s) — "
+                            "only the first registration is kept",
+                            addr, entry.model,
+                        )
+                        continue
                     self.registry.add("prefill", addr, model=entry.model)
                     _registered_prefill.add(addr)
-                elif entry.role == "decode" and addr not in _registered_decode:
+                elif entry.role == "decode":
+                    if addr in _registered_decode:
+                        logger.warning(
+                            "Duplicate decode address %s (model=%s) — "
+                            "only the first registration is kept",
+                            addr, entry.model,
+                        )
+                        continue
                     self.registry.add("decode", addr, model=entry.model)
                     _registered_decode.add(addr)
-            # Derive prefill/decode lists for scheduler compatibility
-            all_prefill = [e.address for e in config.instances if e.role == "prefill"]
-            all_decode = [e.address for e in config.instances if e.role == "decode"]
+            # Derive de-duplicated prefill/decode lists for scheduler compat
+            seen_p: set[str] = set()
+            seen_d: set[str] = set()
+            all_prefill: list[str] = []
+            all_decode: list[str] = []
+            for e in config.instances:
+                if e.role == "prefill" and e.address not in seen_p:
+                    all_prefill.append(e.address)
+                    seen_p.add(e.address)
+                elif e.role == "decode" and e.address not in seen_d:
+                    all_decode.append(e.address)
+                    seen_d.add(e.address)
         else:
             # Legacy single-model: register from prefill/decode lists
             model_name = config.model

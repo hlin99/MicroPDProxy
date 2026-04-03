@@ -23,21 +23,20 @@ def register(router: APIRouter, server) -> None:
         # Multi-model: return all registered models from registry
         if server.registry is not None:
             models = server.registry.get_registered_models()
-            if models:
-                data = [
-                    {
-                        "id": m,
-                        "object": "model",
-                        "created": _MODEL_CREATED_EPOCH,
-                        "owned_by": "system",
-                    }
-                    for m in models
-                ]
-                return JSONResponse(
-                    content={"object": "list", "data": data},
-                    status_code=200,
-                )
-        # Single-model fallback: forward to backend
+            data = [
+                {
+                    "id": m,
+                    "object": "model",
+                    "created": _MODEL_CREATED_EPOCH,
+                    "owned_by": "system",
+                }
+                for m in models
+            ]
+            return JSONResponse(
+                content={"object": "list", "data": data},
+                status_code=200,
+            )
+        # No registry (should not happen in normal operation) — forward
         return await server.get_from_instance("/v1/models")
 
     async def get_version():

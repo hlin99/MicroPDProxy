@@ -59,7 +59,7 @@ class InstanceEntry(BaseModel):
 
     address: str
     role: str
-    model: str
+    model: str = ""  # empty = auto-detect via discovery
 
     @field_validator("role")
     @classmethod
@@ -175,9 +175,15 @@ class ProxyConfig(BaseModel):
     @model_validator(mode="after")
     def _require_decode(self) -> "ProxyConfig":
         # Multi-model config: instances or models field provides everything
-        if self.instances or self.models:
+        if self.instances is not None or self.models is not None:
+            # Reject mixing multi-model with legacy prefill/decode lists
+            if self.prefill or self.decode:
+                raise ValueError(
+                    "Cannot use 'instances' or 'models' together with "
+                    "legacy 'prefill'/'decode' lists."
+                )
             # Still require at least one decode entry
-            if self.instances:
+            if self.instances is not None:
                 has_decode = any(
                     e.role == "decode" for e in self.instances
                 )

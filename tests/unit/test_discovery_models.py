@@ -120,6 +120,26 @@ class TestProbeModels:
         await discovery._probe_models(mock_session, "10.0.0.1:8000")
         mock_session.get.assert_not_called()
 
+    @pytest.mark.asyncio()
+    async def test_probe_models_skips_when_model_already_set(self):
+        """_probe_models skips /v1/models probe when model is already known."""
+        reg = InstanceRegistry()
+        reg.add("prefill", "10.0.0.1:8000", model="llama-3")
+        reg.mark_healthy("10.0.0.1:8000")
+
+        discovery = NodeDiscovery(
+            prefill_instances=["10.0.0.1:8000"],
+            decode_instances=[],
+            registry=reg,
+        )
+        mock_session = MagicMock()
+        await discovery._probe_models(mock_session, "10.0.0.1:8000")
+
+        # Should not probe since model is already set
+        mock_session.get.assert_not_called()
+        info = reg.get_instance_info("10.0.0.1:8000")
+        assert info.model == "llama-3"
+
 
 class TestRegistryUpdateModel:
     """Tests for registry.update_model()."""

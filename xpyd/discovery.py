@@ -11,9 +11,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import List, Set
+from typing import TYPE_CHECKING, List, Optional, Set
 
 import aiohttp
+
+if TYPE_CHECKING:
+    from xpyd.registry import InstanceRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +40,7 @@ class NodeDiscovery:
         decode_instances: List[str],
         probe_interval: float = 10.0,
         wait_timeout: float = 600.0,
-        registry=None,
+        registry: Optional["InstanceRegistry"] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -162,9 +165,21 @@ class NodeDiscovery:
     async def _probe_models(
         self, session: aiohttp.ClientSession, instance: str
     ):
-        """Probe /v1/models on a healthy instance to auto-detect model name."""
+        """Probe /v1/models on a healthy instance to auto-detect model name.
+
+        Only probes when the registry model for this instance is unknown
+        (empty string). Logs at info level only when a model is newly
+        detected; uses debug level for routine probes.
+        """
         if self.registry is None:
             return
+        # Skip probe if the model is already known for this instance
+        try:
+            info = self.registry.get_instance_info(instance)
+            if info.model:
+                return  # model already set — no need to probe
+        except KeyError:
+            return  # instance not in registry
         try:
             models_url = f"http://{instance}/v1/models"
             async with session.get(models_url) as resp:
@@ -180,6 +195,20 @@ class NodeDiscovery:
                                 model_name,
                                 instance,
                             )
+                        else:
+                            logger.debug(
+                                "Empty model id from /v1/models on %s",
+                                instance,
+                            )
+                    else:
+                        logger.debug(
+                            "Empty data list from /v1/models on %s",
+                            instance,
+                        )
+                else:
+                    logger.debug(
+                        "/v1/models returned %d on %s", resp.status, instance,
+                    )
         except Exception:
             logger.debug(
                 "Failed to probe /v1/models on %s", instance

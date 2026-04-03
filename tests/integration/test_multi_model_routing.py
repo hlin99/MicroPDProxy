@@ -105,31 +105,12 @@ def _make_dummy_app(model_id: str):
     return app
 
 
-def _run(app, port):
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    uvicorn.Server(config).run()
-
-
 # ---------------------------------------------------------------------------
 # Topology: 4P + 4D, 3 models
 #   llama-3:     p1, p2, d1, d2
 #   deepseek-r1: p3, d3
 #   qwen-2:      p4, d4
 # ---------------------------------------------------------------------------
-
-_PORTS = {
-    k: _free_port()
-    for k in [
-        "p1",
-        "p2",
-        "p3",
-        "p4",
-        "d1",
-        "d2",
-        "d3",
-        "d4",
-    ]
-}
 
 _MODEL_MAP = {
     "p1": "llama-3",
@@ -142,31 +123,66 @@ _MODEL_MAP = {
     "d4": "qwen-2",
 }
 
-# Start all nodes
-for name, port in _PORTS.items():
-    model = _MODEL_MAP[name]
-    app = _make_dummy_app(model)
-    threading.Thread(target=_run, args=(app, port), daemon=True).start()
 
-time.sleep(2)
+@pytest.fixture(scope="session")
+def dummy_nodes():
+    """Start all 8 dummy nodes once per session, poll for readiness, and
+    return a dict mapping node name to ``127.0.0.1:<port>``."""
+    import httpx
+
+    ports: dict[str, int] = {k: _free_port() for k in _MODEL_MAP}
+    servers: list[uvicorn.Server] = []
+
+    for name, port in ports.items():
+        model = _MODEL_MAP[name]
+        app = _make_dummy_app(model)
+        config = uvicorn.Config(
+            app,
+            host="127.0.0.1",
+            port=port,
+            log_level="error",
+        )
+        srv = uvicorn.Server(config)
+        servers.append(srv)
+        threading.Thread(target=srv.run, daemon=True).start()
+
+    # Poll for readiness instead of fixed sleep
+    deadline = time.monotonic() + 10
+    for _name, port in ports.items():
+        url = f"http://127.0.0.1:{port}/health"
+        while time.monotonic() < deadline:
+            try:
+                r = httpx.get(url, timeout=1)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            time.sleep(0.1)
+
+    addrs = {name: f"127.0.0.1:{port}" for name, port in ports.items()}
+    yield addrs
+
+    # Teardown: signal servers to shut down
+    for srv in servers:
+        srv.should_exit = True
 
 
-def _addr(name):
-    return f"127.0.0.1:{_PORTS[name]}"
+def _addr(name, addrs):
+    return addrs[name]
 
 
-def _make_multi_model_proxy_app():
+def _make_multi_model_proxy_app(addrs):
     """Build a proxy with multi-model registry."""
-    all_prefill = [_addr("p1"), _addr("p2"), _addr("p3"), _addr("p4")]
-    all_decode = [_addr("d1"), _addr("d2"), _addr("d3"), _addr("d4")]
+    all_prefill = [addrs["p1"], addrs["p2"], addrs["p3"], addrs["p4"]]
+    all_decode = [addrs["d1"], addrs["d2"], addrs["d3"], addrs["d4"]]
 
     reg = InstanceRegistry()
     for name in ["p1", "p2", "p3", "p4"]:
-        reg.add("prefill", _addr(name), model=_MODEL_MAP[name])
+        reg.add("prefill", addrs[name], model=_MODEL_MAP[name])
     for name in ["d1", "d2", "d3", "d4"]:
-        reg.add("decode", _addr(name), model=_MODEL_MAP[name])
-    for name in _PORTS:
-        reg.mark_healthy(_addr(name))
+        reg.add("decode", addrs[name], model=_MODEL_MAP[name])
+    for name in addrs:
+        reg.mark_healthy(addrs[name])
 
     sched = RoundRobinSchedulingPolicy(registry=reg)
 
@@ -197,19 +213,19 @@ def anyio_backend():
 
 
 @pytest.fixture
-async def multi_model_client():
-    app, _ = _make_multi_model_proxy_app()
+async def multi_model_client(dummy_nodes):
+    app, _ = _make_multi_model_proxy_app(dummy_nodes)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as cli:
         yield cli
 
 
 @pytest.fixture
-async def multi_model_client_and_registry():
-    app, reg = _make_multi_model_proxy_app()
+async def multi_model_client_and_registry(dummy_nodes):
+    app, reg = _make_multi_model_proxy_app(dummy_nodes)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as cli:
-        yield cli, reg
+        yield cli, reg, dummy_nodes
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +270,7 @@ async def test_models_endpoint_lists_all(
     multi_model_client_and_registry,
 ):
     """GET /v1/models returns all 3 models."""
-    cli, reg = multi_model_client_and_registry
+    cli, reg, addrs = multi_model_client_and_registry
     resp = await cli.get("/v1/models")
     assert resp.status_code == 200
     data = resp.json()
@@ -268,7 +284,7 @@ async def test_models_endpoint_format(
     multi_model_client_and_registry,
 ):
     """Response format matches OpenAI spec."""
-    cli, reg = multi_model_client_and_registry
+    cli, reg, addrs = multi_model_client_and_registry
     resp = await cli.get("/v1/models")
     assert resp.status_code == 200
     data = resp.json()
@@ -302,10 +318,10 @@ async def test_multi_model_one_model_down(
     multi_model_client_and_registry,
 ):
     """When all instances of model B are unhealthy, B returns error but A works."""
-    cli, reg = multi_model_client_and_registry
+    cli, reg, addrs = multi_model_client_and_registry
     # Mark deepseek-r1 instances as unhealthy
-    reg.mark_unhealthy(_addr("p3"))
-    reg.mark_unhealthy(_addr("d3"))
+    reg.mark_unhealthy(_addr("p3", addrs))
+    reg.mark_unhealthy(_addr("d3", addrs))
 
     # deepseek-r1 should fail (no available instances)
     resp_b = await cli.post(
@@ -331,8 +347,8 @@ async def test_multi_model_one_model_down(
     assert resp_a.json()["model"] == "llama-3"
 
     # Restore health
-    reg.mark_healthy(_addr("p3"))
-    reg.mark_healthy(_addr("d3"))
+    reg.mark_healthy(_addr("p3", addrs))
+    reg.mark_healthy(_addr("d3", addrs))
 
 
 @pytest.mark.anyio
@@ -377,7 +393,7 @@ async def test_models_endpoint_updates_on_instance_change(
     multi_model_client_and_registry,
 ):
     """After removing all instances of qwen-2, /v1/models no longer lists it."""
-    cli, reg = multi_model_client_and_registry
+    cli, reg, addrs = multi_model_client_and_registry
 
     # Verify qwen-2 is listed initially
     resp = await cli.get("/v1/models")
@@ -385,8 +401,8 @@ async def test_models_endpoint_updates_on_instance_change(
     assert "qwen-2" in model_ids
 
     # Remove all qwen-2 instances
-    reg.remove(_addr("p4"))
-    reg.remove(_addr("d4"))
+    reg.remove(_addr("p4", addrs))
+    reg.remove(_addr("d4", addrs))
 
     # qwen-2 should no longer be listed
     resp = await cli.get("/v1/models")
@@ -394,7 +410,7 @@ async def test_models_endpoint_updates_on_instance_change(
     assert "qwen-2" not in model_ids
 
     # Re-add for cleanup (other tests might share fixtures)
-    reg.add("prefill", _addr("p4"), model="qwen-2")
-    reg.add("decode", _addr("d4"), model="qwen-2")
-    reg.mark_healthy(_addr("p4"))
-    reg.mark_healthy(_addr("d4"))
+    reg.add("prefill", _addr("p4", addrs), model="qwen-2")
+    reg.add("decode", _addr("d4", addrs), model="qwen-2")
+    reg.mark_healthy(_addr("p4", addrs))
+    reg.mark_healthy(_addr("d4", addrs))
