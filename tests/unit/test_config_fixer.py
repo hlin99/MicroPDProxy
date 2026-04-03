@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from unittest.mock import patch
 
 import yaml
 
@@ -182,8 +183,9 @@ class TestSuggestions:
         }
         fixer = ConfigFixer(data)
         report = fixer.run()
-        assert any("both dual and prefill/decode" in s.message
-                    for s in report.suggestions)
+        assert any(
+            "both dual and prefill/decode" in s.message for s in report.suggestions
+        )
 
     def test_address_conflict(self):
         data = {
@@ -201,7 +203,8 @@ class TestSuggestions:
             "instances": [
                 {"address": f"10.0.0.{i}:8000", "role": "prefill", "model": "m"}
                 for i in range(1, 6)
-            ] + [
+            ]
+            + [
                 {"address": "10.0.0.10:8000", "role": "decode", "model": "m"},
             ],
         }
@@ -305,9 +308,7 @@ class TestWriteMode:
             assert exit_code == 0
 
             # Check backup exists
-            bak_files = [
-                f for f in os.listdir(tmpdir) if f.endswith(".bak")
-            ]
+            bak_files = [f for f in os.listdir(tmpdir) if f.endswith(".bak")]
             assert len(bak_files) == 1
 
             # Check fixed file
@@ -339,3 +340,84 @@ class TestModelsShorthandSuggestions:
         fixer = ConfigFixer(data)
         report = fixer.run()
         assert any("multiple models" in s.message for s in report.suggestions)
+
+
+class TestEmptyConfig:
+    """Edge case: empty config file handled gracefully."""
+
+    def test_empty_dict(self):
+        fixer = ConfigFixer({})
+        report = fixer.run()
+        assert len(report.fixes) == 0
+        assert len(report.suggestions) == 0
+
+    def test_empty_file_via_cli(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, "empty.yaml")
+            with open(config_path, "w") as f:
+                f.write("")
+            exit_code = run_fix_config(config_path)
+            # yaml.safe_load("") returns None → "must be a mapping" error
+            assert exit_code == 1
+
+
+class TestInteractiveMode:
+    """Test --interactive prompts for suggest-only issues."""
+
+    def test_interactive_prompts_shown(self, capsys):
+        """Interactive mode shows suggestions with 'Press Enter' prompt."""
+        data = {
+            "instances": [
+                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.2:8000", "role": "prefill", "model": "m"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, "test.yaml")
+            with open(config_path, "w") as f:
+                yaml.dump(data, f)
+
+            with patch("builtins.input", return_value=""):
+                exit_code = run_fix_config(
+                    config_path,
+                    interactive=True,
+                )
+            assert exit_code == 0
+            captured = capsys.readouterr()
+            assert "both dual and prefill/decode" in captured.out
+
+    def test_interactive_handles_eof(self, capsys):
+        """Interactive mode handles EOFError gracefully."""
+        data = {
+            "instances": [
+                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.2:8000", "role": "prefill", "model": "m"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = os.path.join(tmpdir, "test.yaml")
+            with open(config_path, "w") as f:
+                yaml.dump(data, f)
+
+            with patch("builtins.input", side_effect=EOFError):
+                exit_code = run_fix_config(
+                    config_path,
+                    interactive=True,
+                )
+            assert exit_code == 0
+
+
+class TestTrailingCommaInYaml:
+    """Trailing comma in YAML lists: PyYAML handles natively.
+
+    PyYAML's safe_load treats trailing commas as part of string values
+    or raises a parse error, so no separate auto-fix rule is needed.
+    This test documents that behavior.
+    """
+
+    def test_yaml_trailing_comma_is_string(self):
+        """YAML treats '10.0.0.1:8000,' as a string (comma included)."""
+        raw = "decode:\n  - '10.0.0.1:8000,'\n"
+        data = yaml.safe_load(raw)
+        # PyYAML parses this as the literal string with comma
+        assert data["decode"] == ["10.0.0.1:8000,"]

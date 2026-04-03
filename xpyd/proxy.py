@@ -818,7 +818,7 @@ def _build_parser():
     )
     fix_parser.add_argument(
         "--interactive", action="store_true", default=False,
-        help="Prompt for confirmation on ambiguous suggestions",
+        help="Interactively acknowledge ambiguous suggestions one by one",
     )
 
     return parser

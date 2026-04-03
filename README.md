@@ -206,6 +206,7 @@ See [`examples/proxy.yaml`](examples/proxy.yaml) for a fully-commented example.
 The proxy exposes an OpenAI-compatible API:
 
 - **`POST /v1/chat/completions`** — Chat completions (streaming and non-streaming)
+- **`POST /v1/completions`** — Text completions (streaming and non-streaming)
 - **`GET /v1/models`** — List all registered models in OpenAI-compatible format
 
 ### Startup Node Discovery

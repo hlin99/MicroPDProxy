@@ -10,8 +10,12 @@ from __future__ import annotations
 import copy
 import difflib
 import re
+import shutil
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -515,10 +519,6 @@ def run_fix_config(
     interactive: bool = False,
 ) -> int:
     """Run the fix-config command.  Returns exit code (0 = ok)."""
-    import sys
-    from datetime import datetime
-    from pathlib import Path
-
     path = Path(config_path)
     if not path.exists():
         print(f"Error: config file not found: {config_path}", file=sys.stderr)
@@ -548,6 +548,11 @@ def run_fix_config(
         print("\u2705 No issues found.")
 
     # Handle suggestions
+    # Note: Suggestions are informational — they describe semantic issues
+    # that require human judgment (e.g. converting all instances to dual,
+    # rebalancing P/D ratios).  In --interactive mode, the user is asked
+    # to acknowledge each suggestion; this does not auto-apply changes
+    # because the correct resolution depends on the user's intent.
     if report.suggestions:
         print(f"\n\u26a0\ufe0f  {len(report.suggestions)} issue(s) need "
               f"your attention:")
@@ -555,11 +560,9 @@ def run_fix_config(
             print(f"  - {sug.path}: {sug.message}")
             if interactive:
                 try:
-                    answer = input("    Apply suggestion? [y/n] ").strip().lower()
+                    input("    Press Enter to continue...")
                 except (EOFError, KeyboardInterrupt):
-                    answer = "n"
-                if answer != "y":
-                    print("    Skipped.")
+                    pass
 
     # Output
     fixed_yaml = yaml.dump(fixer.fixed_data, default_flow_style=False,
@@ -568,7 +571,6 @@ def run_fix_config(
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{config_path}.{timestamp}.bak"
         # Create backup
-        import shutil
         shutil.copy2(config_path, backup_path)
         print(f"\nBackup saved to: {backup_path}")
         with open(path, "w") as fh:
