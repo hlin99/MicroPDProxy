@@ -146,3 +146,42 @@ class TestRequireDecodeWithDual:
         )
         assert cfg.model == "llama-3"
         assert cfg.instances is None
+
+
+class TestConfigEdgeCases:
+    """Edge cases for dual config validation."""
+
+    def test_pd_without_prefill_rejected(self):
+        """Model with only decode instances (no prefill) is rejected."""
+        with pytest.raises(ValueError, match="requires at least one prefill"):
+            ProxyConfig(
+                instances=[
+                    {"address": "10.0.0.1:8000", "role": "decode", "model": "llama-3"},
+                ],
+            )
+
+    def test_invalid_scheduler_name_accepted_by_config(self):
+        """Config accepts unknown scheduler names (validation happens at runtime)."""
+        cfg = ProxyConfig(
+            models=[
+                {
+                    "name": "qwen-2",
+                    "dual": ["10.0.0.1:8000"],
+                    "scheduler": "nonexistent_strategy",
+                },
+            ],
+        )
+        assert cfg._model_schedulers == {"qwen-2": "nonexistent_strategy"}
+
+    def test_scheduler_alias_round_robin(self):
+        """'round_robin' (underscore) is accepted in config."""
+        cfg = ProxyConfig(
+            models=[
+                {
+                    "name": "qwen-2",
+                    "dual": ["10.0.0.1:8000"],
+                    "scheduler": "round_robin",
+                },
+            ],
+        )
+        assert cfg._model_schedulers == {"qwen-2": "round_robin"}
