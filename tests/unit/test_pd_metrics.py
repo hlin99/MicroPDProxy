@@ -21,7 +21,7 @@ from xpyd.metrics import (
 
 class TestFirstTokenTracker:
     @pytest.mark.asyncio
-    async def test_tracks_first_token_time(self):
+    async def test_tracks_first_chunk_time(self):
         async def gen():
             yield b"token1"
             yield b"token2"
@@ -33,10 +33,10 @@ class TestFirstTokenTracker:
             chunks.append(chunk)
 
         assert len(chunks) == 3
-        assert tracker.first_token_time is not None
-        assert tracker.last_token_time is not None
-        assert tracker.token_count == 3
-        assert tracker.first_token_time <= tracker.last_token_time
+        assert tracker.first_chunk_time is not None
+        assert tracker.last_chunk_time is not None
+        assert tracker.chunk_count == 3
+        assert tracker.first_chunk_time <= tracker.last_chunk_time
 
     @pytest.mark.asyncio
     async def test_empty_generator(self):
@@ -50,9 +50,9 @@ class TestFirstTokenTracker:
             chunks.append(chunk)
 
         assert len(chunks) == 0
-        assert tracker.first_token_time is None
-        assert tracker.last_token_time is None
-        assert tracker.token_count == 0
+        assert tracker.first_chunk_time is None
+        assert tracker.last_chunk_time is None
+        assert tracker.chunk_count == 0
 
     @pytest.mark.asyncio
     async def test_single_token(self):
@@ -64,8 +64,8 @@ class TestFirstTokenTracker:
         async for chunk in tracker:
             chunks.append(chunk)
 
-        assert tracker.token_count == 1
-        assert tracker.first_token_time == tracker.last_token_time
+        assert tracker.chunk_count == 1
+        assert tracker.first_chunk_time == tracker.last_chunk_time
 
     @pytest.mark.asyncio
     async def test_preserves_chunks(self):
@@ -84,9 +84,9 @@ class TestFirstTokenTracker:
 class TestRecordPdMetrics:
     def test_records_all_metrics(self):
         tracker = FirstTokenTracker.__new__(FirstTokenTracker)
-        tracker.first_token_time = 1.5
-        tracker.last_token_time = 2.5
-        tracker.token_count = 11
+        tracker.first_chunk_time = 1.5
+        tracker.last_chunk_time = 2.5
+        tracker.chunk_count = 11
 
         # Should not raise
         record_pd_metrics(
@@ -101,9 +101,9 @@ class TestRecordPdMetrics:
 
     def test_no_tokens_received(self):
         tracker = FirstTokenTracker.__new__(FirstTokenTracker)
-        tracker.first_token_time = None
-        tracker.last_token_time = None
-        tracker.token_count = 0
+        tracker.first_chunk_time = None
+        tracker.last_chunk_time = None
+        tracker.chunk_count = 0
 
         # Should not raise — just records prefill duration
         record_pd_metrics(
@@ -119,9 +119,9 @@ class TestRecordPdMetrics:
     def test_model_label_present(self):
         """Verify the model label is recorded on all PD metrics."""
         tracker = FirstTokenTracker.__new__(FirstTokenTracker)
-        tracker.first_token_time = 1.5
-        tracker.last_token_time = 2.5
-        tracker.token_count = 5
+        tracker.first_chunk_time = 1.5
+        tracker.last_chunk_time = 2.5
+        tracker.chunk_count = 5
 
         record_pd_metrics(
             endpoint="/v1/completions",

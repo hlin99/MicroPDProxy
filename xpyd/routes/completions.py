@@ -312,6 +312,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                         t_request_start=t_request_start,
                         t_prefill_done=t_prefill_done,
                         tracker=decode_tracker,
+                        is_streaming=request.get("stream", False),
                     )
                 # Decrement decode active gauge (only if decode was started)
                 if decode_instance and t_prefill_done is not None:
@@ -322,9 +323,17 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
 
         return StreamingResponse(wrapped_generator(), media_type=media_type)
     except HTTPException:
+        if decode_instance and t_prefill_done is not None:
+            proxy_decode_active_requests.labels(
+                decode_instance=decode_instance, model=model_label,
+            ).dec()
         track_request_end(endpoint, _metrics_start)
         raise
     except Exception:
+        if decode_instance and t_prefill_done is not None:
+            proxy_decode_active_requests.labels(
+                decode_instance=decode_instance, model=model_label,
+            ).dec()
         track_request_end(endpoint, _metrics_start)
         logger.error("Error in %s: %s", handler_name, sys.exc_info()[1])
         return JSONResponse(
