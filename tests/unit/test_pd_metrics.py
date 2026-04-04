@@ -264,10 +264,17 @@ class TestStreamingFlag:
         from xpyd.metrics import REGISTRY
 
         # Get current TPOT count before
-        before = REGISTRY.get_sample_value(
-            "proxy_tpot_seconds_count",
-            {"prefill_instance": "skip-test:8001", "decode_instance": "skip-test:8002", "model": "skip-model"},
-        ) or 0
+        before = (
+            REGISTRY.get_sample_value(
+                "proxy_tpot_seconds_count",
+                {
+                    "prefill_instance": "skip-test:8001",
+                    "decode_instance": "skip-test:8002",
+                    "model": "skip-model",
+                },
+            )
+            or 0
+        )
 
         record_pd_metrics(
             prefill_instance="skip-test:8001",
@@ -279,10 +286,79 @@ class TestStreamingFlag:
             is_streaming=False,  # non-streaming
         )
 
-        after = REGISTRY.get_sample_value(
-            "proxy_tpot_seconds_count",
-            {"prefill_instance": "skip-test:8001", "decode_instance": "skip-test:8002", "model": "skip-model"},
-        ) or 0
+        after = (
+            REGISTRY.get_sample_value(
+                "proxy_tpot_seconds_count",
+                {
+                    "prefill_instance": "skip-test:8001",
+                    "decode_instance": "skip-test:8002",
+                    "model": "skip-model",
+                },
+            )
+            or 0
+        )
 
         # TPOT should NOT have been recorded
         assert after == before, "TPOT should not be recorded for non-streaming requests"
+
+
+class TestTTFTPaths:
+    """Test TTFT calculation for P-first and D-first token paths."""
+
+    def test_p_first_ttft_uses_prefill_duration(self):
+        """When first_token_from_prefill=True, TTFT = prefill duration."""
+        tracker = FirstTokenTracker.__new__(FirstTokenTracker)
+        tracker.first_chunk_time = 3.0  # decode first chunk (should be ignored)
+        tracker.last_chunk_time = 4.0
+        tracker.chunk_count = 5
+
+        record_pd_metrics(
+            prefill_instance="ttft-p:8001",
+            decode_instance="ttft-p:8002",
+            model="ttft-p-model",
+            t_request_start=1.0,
+            t_prefill_done=1.5,  # prefill duration = 0.5s
+            tracker=tracker,
+            first_token_from_prefill=True,
+        )
+
+        ttft_sum = REGISTRY.get_sample_value(
+            "proxy_ttft_seconds_sum",
+            {
+                "prefill_instance": "ttft-p:8001",
+                "decode_instance": "ttft-p:8002",
+                "model": "ttft-p-model",
+            },
+        )
+        assert ttft_sum is not None
+        # TTFT should be ~0.5 (prefill duration), not ~2.0 (decode first chunk)
+        assert abs(ttft_sum - 0.5) < 0.01
+
+    def test_d_first_ttft_uses_decode_first_chunk(self):
+        """When first_token_from_prefill=False, TTFT = decode first chunk time."""
+        tracker = FirstTokenTracker.__new__(FirstTokenTracker)
+        tracker.first_chunk_time = 3.0  # decode first chunk at t=3.0
+        tracker.last_chunk_time = 4.0
+        tracker.chunk_count = 5
+
+        record_pd_metrics(
+            prefill_instance="ttft-d:8001",
+            decode_instance="ttft-d:8002",
+            model="ttft-d-model",
+            t_request_start=1.0,
+            t_prefill_done=1.5,
+            tracker=tracker,
+            first_token_from_prefill=False,
+        )
+
+        ttft_sum = REGISTRY.get_sample_value(
+            "proxy_ttft_seconds_sum",
+            {
+                "prefill_instance": "ttft-d:8001",
+                "decode_instance": "ttft-d:8002",
+                "model": "ttft-d-model",
+            },
+        )
+        assert ttft_sum is not None
+        # TTFT should be ~2.0 (decode first chunk - request start), not ~0.5
+        assert abs(ttft_sum - 2.0) < 0.01

@@ -212,12 +212,21 @@ def record_pd_metrics(
         model=model,
     ).observe(t_prefill_done - t_request_start)
 
-    # TTFT — user sees first token from prefill, so TTFT ≈ prefill duration
+    # TTFT — depends on which node emits the first user-visible token
+    if first_token_from_prefill:
+        # P-first: first token comes from prefill node
+        ttft = t_prefill_done - t_request_start
+    elif tracker.first_chunk_time is not None:
+        # D-first: first token comes from decode node
+        ttft = tracker.first_chunk_time - t_request_start
+    else:
+        # Fallback: no decode chunks received, use prefill duration
+        ttft = t_prefill_done - t_request_start
     proxy_ttft_seconds.labels(
         prefill_instance=prefill_instance,
         decode_instance=decode_instance,
         model=model,
-    ).observe(t_prefill_done - t_request_start)
+    ).observe(ttft)
 
     if tracker.first_chunk_time is not None:
         # KV transfer time (clamped to >= 0)
