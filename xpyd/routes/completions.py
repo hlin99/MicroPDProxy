@@ -269,6 +269,11 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             generator_class = server.generator
         else:
             generator_class = server.d_first_token_generator_class
+        # Determine if user's first token comes from prefill or decode node.
+        # P_first_token_generator yields P's token first; D_first_token_generator
+        # discards P's token and yields D's tokens only.
+        from xpyd.proxy import P_first_token_generator
+        first_token_from_p = (generator_class is P_first_token_generator)
         final_generator = generator_class(
             generator_p,
             generator_d,
@@ -323,6 +328,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                         t_prefill_done=t_prefill_done,
                         tracker=decode_tracker,
                         is_streaming=request.get("stream", False),
+                        first_token_from_prefill=first_token_from_p,
                     )
                 # Decrement decode active gauge (only if decode was started)
                 if decode_instance and prefill_instance and t_prefill_done is not None:
