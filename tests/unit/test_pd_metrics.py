@@ -251,3 +251,38 @@ class TestNewMetricDefinitions:
             decode_instance="test:8002",
             model="test-model",
         ).dec()
+
+
+class TestStreamingFlag:
+    def test_non_streaming_skips_tpot(self):
+        """When is_streaming=False, TPOT should not be recorded."""
+        tracker = FirstTokenTracker.__new__(FirstTokenTracker)
+        tracker.first_chunk_time = 1.5
+        tracker.last_chunk_time = 2.5
+        tracker.chunk_count = 11
+
+        from xpyd.metrics import REGISTRY
+
+        # Get current TPOT count before
+        before = REGISTRY.get_sample_value(
+            "proxy_tpot_seconds_count",
+            {"prefill_instance": "skip-test:8001", "decode_instance": "skip-test:8002", "model": "skip-model"},
+        ) or 0
+
+        record_pd_metrics(
+            prefill_instance="skip-test:8001",
+            decode_instance="skip-test:8002",
+            model="skip-model",
+            t_request_start=1.0,
+            t_prefill_done=1.3,
+            tracker=tracker,
+            is_streaming=False,  # non-streaming
+        )
+
+        after = REGISTRY.get_sample_value(
+            "proxy_tpot_seconds_count",
+            {"prefill_instance": "skip-test:8001", "decode_instance": "skip-test:8002", "model": "skip-model"},
+        ) or 0
+
+        # TPOT should NOT have been recorded
+        assert after == before, "TPOT should not be recorded for non-streaming requests"
