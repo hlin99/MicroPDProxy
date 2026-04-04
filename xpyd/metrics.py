@@ -60,7 +60,7 @@ def get_metrics() -> bytes:
 proxy_prefill_duration_seconds = Histogram(
     "proxy_prefill_duration_seconds",
     "Prefill node response time in seconds",
-    ["prefill_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
@@ -74,21 +74,21 @@ proxy_kv_transfer_duration_seconds = Histogram(
 proxy_decode_duration_seconds = Histogram(
     "proxy_decode_duration_seconds",
     "Total decode phase duration in seconds",
-    ["decode_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
 proxy_ttft_seconds = Histogram(
     "proxy_ttft_seconds",
     "End-to-end time to first token (user-perceived) in seconds",
-    ["endpoint", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
 proxy_tpot_seconds = Histogram(
     "proxy_tpot_seconds",
     "Average time per output token (decode phase) in seconds",
-    ["endpoint", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
@@ -102,14 +102,14 @@ proxy_e2e_latency_seconds = Histogram(
 proxy_prefill_active_requests = Gauge(
     "proxy_prefill_active_requests",
     "Number of requests currently in prefill stage",
-    ["prefill_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
 proxy_decode_active_requests = Gauge(
     "proxy_decode_active_requests",
     "Number of requests currently in decode stage",
-    ["decode_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
@@ -120,21 +120,21 @@ proxy_decode_active_requests = Gauge(
 proxy_prefill_queue_depth = Gauge(
     "proxy_prefill_queue_depth",
     "Number of requests waiting for prefill (0 if no queueing exists)",
-    ["prefill_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
 proxy_prefill_requests_total = Counter(
     "proxy_prefill_requests_total",
     "Total number of requests routed to each prefill instance",
-    ["prefill_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
 proxy_decode_requests_total = Counter(
     "proxy_decode_requests_total",
     "Total number of requests routed to each decode instance",
-    ["decode_instance", "model"],
+    ["prefill_instance", "decode_instance", "model"],
     registry=REGISTRY,
 )
 
@@ -177,7 +177,6 @@ class FirstTokenTracker:
 
 
 def record_pd_metrics(
-    endpoint: str,
     prefill_instance: str,
     decode_instance: str,
     model: str,
@@ -208,13 +207,16 @@ def record_pd_metrics(
     # Prefill duration
     proxy_prefill_duration_seconds.labels(
         prefill_instance=prefill_instance,
+        decode_instance=decode_instance,
         model=model,
     ).observe(t_prefill_done - t_request_start)
 
     # TTFT — user sees first token from prefill, so TTFT ≈ prefill duration
-    proxy_ttft_seconds.labels(endpoint=endpoint, model=model).observe(
-        t_prefill_done - t_request_start
-    )
+    proxy_ttft_seconds.labels(
+        prefill_instance=prefill_instance,
+        decode_instance=decode_instance,
+        model=model,
+    ).observe(t_prefill_done - t_request_start)
 
     if tracker.first_chunk_time is not None:
         # KV transfer time (clamped to >= 0)
@@ -229,6 +231,7 @@ def record_pd_metrics(
         if tracker.last_chunk_time is not None and tracker.chunk_count > 0:
             decode_duration = tracker.last_chunk_time - tracker.first_chunk_time
             proxy_decode_duration_seconds.labels(
+                prefill_instance=prefill_instance,
                 decode_instance=decode_instance,
                 model=model,
             ).observe(decode_duration)
@@ -237,5 +240,7 @@ def record_pd_metrics(
             if is_streaming and tracker.chunk_count > 1:
                 tpot = decode_duration / (tracker.chunk_count - 1)
                 proxy_tpot_seconds.labels(
-                    endpoint=endpoint, model=model,
+                    prefill_instance=prefill_instance,
+                    decode_instance=decode_instance,
+                    model=model,
                 ).observe(tpot)

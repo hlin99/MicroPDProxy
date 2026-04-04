@@ -200,15 +200,18 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
 
         # Track per-instance request counters
         proxy_prefill_requests_total.labels(
-            prefill_instance=prefill_instance, model=model_label,
+            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            model=model_label,
         ).inc()
         proxy_decode_requests_total.labels(
-            decode_instance=decode_instance, model=model_label,
+            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            model=model_label,
         ).inc()
 
         # Track active prefill requests
         proxy_prefill_active_requests.labels(
-            prefill_instance=prefill_instance, model=model_label,
+            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            model=model_label,
         ).inc()
 
         value = b""
@@ -225,17 +228,20 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 model=model_label,
             ).inc()
             proxy_prefill_active_requests.labels(
-                prefill_instance=prefill_instance, model=model_label,
+                prefill_instance=prefill_instance, decode_instance=decode_instance,
+                model=model_label,
             ).dec()
             raise http_exc
 
         t_prefill_done = time.monotonic()
         # Prefill complete — decrement active prefill, start active decode
         proxy_prefill_active_requests.labels(
-            prefill_instance=prefill_instance, model=model_label,
+            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            model=model_label,
         ).dec()
         proxy_decode_active_requests.labels(
-            decode_instance=decode_instance, model=model_label,
+            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            model=model_label,
         ).inc()
 
         value = (
@@ -249,23 +255,15 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 yield b""
 
         generator_p = streaming_response(value)
-        try:
-            generator_d_raw = server.forward_request(
-                f"http://{decode_instance}{endpoint}", request
-            )
-            decode_tracker = FirstTokenTracker(generator_d_raw)
-            generator_d = decode_tracker
-        except HTTPException as http_exc:
-            server.exception_handler(prefill_instance, decode_instance, total_length)
-            server._record_failure(prefill_instance, decode_instance)
-            proxy_instance_errors_total.labels(
-                instance=decode_instance, error_type="decode_forward_error",
-                model=model_label,
-            ).inc()
-            proxy_decode_active_requests.labels(
-                decode_instance=decode_instance, model=model_label,
-            ).dec()
-            raise http_exc
+        # Note: server.forward_request() is an async generator — calling it
+        # only creates the generator object; it never raises synchronously.
+        # Actual HTTP errors surface when the generator is iterated inside
+        # wrapped_generator(), where they are caught and handled.
+        generator_d_raw = server.forward_request(
+            f"http://{decode_instance}{endpoint}", request
+        )
+        decode_tracker = FirstTokenTracker(generator_d_raw)
+        generator_d = decode_tracker
 
         if request.get("stream", False):
             generator_class = server.generator
@@ -294,7 +292,20 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     "[0]Client disconnected during %s (CancelledError)",
                     handler_name,
                 )
+            except HTTPException as http_exc:
+                server.exception_handler(prefill_instance, decode_instance, total_length)
+                server._record_failure(prefill_instance, decode_instance)
+                proxy_instance_errors_total.labels(
+                    instance=decode_instance, error_type="decode_forward_error",
+                    model=model_label,
+                ).inc()
+                logger.error("[1] HTTPException in wrapped_generator: %s", str(http_exc.detail))
+                raise
             except Exception as e:
+                proxy_instance_errors_total.labels(
+                    instance=decode_instance, error_type="decode_forward_error",
+                    model=model_label,
+                ).inc()
                 logger.error("[1] Exception in wrapped_generator: %s", str(e))
                 raise
             finally:
@@ -305,7 +316,6 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     and decode_tracker is not None
                 ):
                     record_pd_metrics(
-                        endpoint=endpoint,
                         prefill_instance=prefill_instance,
                         decode_instance=decode_instance,
                         model=model_label,
@@ -315,24 +325,30 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                         is_streaming=request.get("stream", False),
                     )
                 # Decrement decode active gauge (only if decode was started)
-                if decode_instance and t_prefill_done is not None:
+                if decode_instance and prefill_instance and t_prefill_done is not None:
                     proxy_decode_active_requests.labels(
-                        decode_instance=decode_instance, model=model_label,
+                        prefill_instance=prefill_instance,
+                        decode_instance=decode_instance,
+                        model=model_label,
                     ).dec()
                 track_request_end(endpoint, _metrics_start)
 
         return StreamingResponse(wrapped_generator(), media_type=media_type)
     except HTTPException:
-        if decode_instance and t_prefill_done is not None:
+        if decode_instance and prefill_instance and t_prefill_done is not None:
             proxy_decode_active_requests.labels(
-                decode_instance=decode_instance, model=model_label,
+                prefill_instance=prefill_instance,
+                decode_instance=decode_instance,
+                model=model_label,
             ).dec()
         track_request_end(endpoint, _metrics_start)
         raise
     except Exception:
-        if decode_instance and t_prefill_done is not None:
+        if decode_instance and prefill_instance and t_prefill_done is not None:
             proxy_decode_active_requests.labels(
-                decode_instance=decode_instance, model=model_label,
+                prefill_instance=prefill_instance,
+                decode_instance=decode_instance,
+                model=model_label,
             ).dec()
         track_request_end(endpoint, _metrics_start)
         logger.error("Error in %s: %s", handler_name, sys.exc_info()[1])

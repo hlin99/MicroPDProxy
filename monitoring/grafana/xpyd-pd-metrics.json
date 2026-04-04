@@ -24,7 +24,7 @@
     },
     {
       "title": "TTFT Distribution",
-      "type": "histogram",
+      "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {

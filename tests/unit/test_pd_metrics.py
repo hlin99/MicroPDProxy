@@ -90,13 +90,13 @@ class TestRecordPdMetrics:
 
         # Should not raise
         record_pd_metrics(
-            endpoint="/v1/completions",
             prefill_instance="10.0.0.1:8001",
             decode_instance="10.0.0.2:8002",
             model="test-model",
             t_request_start=1.0,
             t_prefill_done=1.3,
             tracker=tracker,
+            is_streaming=True,
         )
 
     def test_no_tokens_received(self):
@@ -107,7 +107,6 @@ class TestRecordPdMetrics:
 
         # Should not raise — just records prefill duration
         record_pd_metrics(
-            endpoint="/v1/completions",
             prefill_instance="10.0.0.1:8001",
             decode_instance="10.0.0.2:8002",
             model="test-model",
@@ -124,13 +123,13 @@ class TestRecordPdMetrics:
         tracker.chunk_count = 5
 
         record_pd_metrics(
-            endpoint="/v1/completions",
             prefill_instance="10.0.0.1:8001",
             decode_instance="10.0.0.2:8002",
             model="llama-70b",
             t_request_start=1.0,
             t_prefill_done=1.3,
             tracker=tracker,
+            is_streaming=True,
         )
 
         # Check that the model label is set on the e2e histogram
@@ -144,9 +143,48 @@ class TestRecordPdMetrics:
         )
         assert sample is not None and sample > 0
 
+    def test_non_streaming_skips_tpot(self):
+        """Non-streaming requests should skip TPOT but record other metrics."""
+        tracker = FirstTokenTracker.__new__(FirstTokenTracker)
+        tracker.first_chunk_time = 1.5
+        tracker.last_chunk_time = 2.5
+        tracker.chunk_count = 5
+
+        record_pd_metrics(
+            prefill_instance="10.0.0.3:8001",
+            decode_instance="10.0.0.4:8002",
+            model="non-stream-model",
+            t_request_start=1.0,
+            t_prefill_done=1.3,
+            tracker=tracker,
+            is_streaming=False,
+        )
+
+        # TPOT should NOT be recorded for non-streaming
+        tpot_sample = REGISTRY.get_sample_value(
+            "proxy_tpot_seconds_count",
+            {
+                "prefill_instance": "10.0.0.3:8001",
+                "decode_instance": "10.0.0.4:8002",
+                "model": "non-stream-model",
+            },
+        )
+        assert tpot_sample is None
+
+        # But decode duration SHOULD be recorded
+        decode_sample = REGISTRY.get_sample_value(
+            "proxy_decode_duration_seconds_count",
+            {
+                "prefill_instance": "10.0.0.3:8001",
+                "decode_instance": "10.0.0.4:8002",
+                "model": "non-stream-model",
+            },
+        )
+        assert decode_sample is not None and decode_sample > 0
+
 
 class TestNewMetricDefinitions:
-    """Verify all 7 new metrics from Issue #129 are defined."""
+    """Verify all metrics from Issue #129 are defined with correct labels."""
 
     def test_e2e_latency_exists(self):
         assert proxy_e2e_latency_seconds is not None
@@ -174,12 +212,14 @@ class TestNewMetricDefinitions:
         assert proxy_kv_transfer_duration_seconds is not None
 
     def test_counters_increment(self):
-        """Counters can be incremented with model label."""
+        """Counters can be incremented with all three labels."""
         proxy_prefill_requests_total.labels(
             prefill_instance="test:8001",
+            decode_instance="test:8002",
             model="test-model",
         ).inc()
         proxy_decode_requests_total.labels(
+            prefill_instance="test:8001",
             decode_instance="test:8002",
             model="test-model",
         ).inc()
@@ -190,20 +230,24 @@ class TestNewMetricDefinitions:
         ).inc()
 
     def test_gauges_inc_dec(self):
-        """Gauges can be incremented and decremented."""
+        """Gauges can be incremented and decremented with all three labels."""
         proxy_prefill_active_requests.labels(
             prefill_instance="test:8001",
+            decode_instance="test:8002",
             model="test-model",
         ).inc()
         proxy_prefill_active_requests.labels(
             prefill_instance="test:8001",
+            decode_instance="test:8002",
             model="test-model",
         ).dec()
         proxy_decode_active_requests.labels(
+            prefill_instance="test:8001",
             decode_instance="test:8002",
             model="test-model",
         ).inc()
         proxy_decode_active_requests.labels(
+            prefill_instance="test:8001",
             decode_instance="test:8002",
             model="test-model",
         ).dec()

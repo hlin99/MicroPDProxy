@@ -63,7 +63,7 @@ All PD metrics carry `prefill_instance`, `decode_instance`, and `model` labels.
 | `proxy_e2e_latency_seconds` | Histogram | Total request latency |
 | `proxy_prefill_active_requests` | Gauge | Requests in prefill stage |
 | `proxy_decode_active_requests` | Gauge | Requests in decode stage |
-| `proxy_prefill_queue_depth` | Gauge | Requests waiting for prefill |
+| `proxy_prefill_queue_depth` | Gauge | Requests waiting for prefill (**placeholder** — always 0 until explicit queueing is implemented) |
 | `proxy_prefill_requests_total` | Counter | Requests per prefill instance |
 | `proxy_decode_requests_total` | Counter | Requests per decode instance |
 | `proxy_instance_errors_total` | Counter | Errors per instance and type |
