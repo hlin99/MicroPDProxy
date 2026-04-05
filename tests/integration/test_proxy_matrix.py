@@ -20,7 +20,7 @@ import requests
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
-TOKENIZER_DIR = str(REPO_ROOT / "tests" / "assets" / "dummy_tokenizer")
+TOKENIZER_DIR = str(REPO_ROOT / "tokenizers" / "DeepSeek-R1")
 ENV = {
     **os.environ,
     "PYTHONPATH": str(REPO_ROOT),
@@ -73,7 +73,7 @@ def _spawn_node(mode, port):
     app_ref = "sim_adapter:prefill_app" if mode == "prefill" else "sim_adapter:decode_app"
     return subprocess.Popen(
         [PYTHON, "-m", "uvicorn", app_ref, "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
-        cwd=REPO_ROOT, env={**os.environ, "PYTHONPATH": str(REPO_ROOT), "SIM_MODEL_NAME": TOKENIZER_DIR},
+        cwd=REPO_ROOT, env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
 
