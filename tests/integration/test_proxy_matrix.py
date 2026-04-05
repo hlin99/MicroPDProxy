@@ -21,12 +21,10 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
 TOKENIZER_DIR = str(REPO_ROOT / "tests" / "assets" / "dummy_tokenizer")
-DUMMY_MODEL_ID = TOKENIZER_DIR
 ENV = {
     **os.environ,
     "PYTHONPATH": str(REPO_ROOT),
-    "DUMMY_MODEL_ID": DUMMY_MODEL_ID,
-    "DUMMY_MAX_MODEL_LEN": "262144",
+    ""dummy"": "dummy",
     "PREFILL_DELAY_PER_TOKEN": "0",
     "DECODE_DELAY_PER_TOKEN": "0",
 }
@@ -206,7 +204,7 @@ def test_proxy_matrix(prefill_count: int, decode_count: int, tp_size: int):
         assert status["decode_node_count"] == decode_count * num_decode_ports
 
         payload = {
-            "model": DUMMY_MODEL_ID,
+            "model": "dummy",
             "messages": [
                 {
                     "role": "user",

@@ -55,7 +55,6 @@ def _wait_port(port: int, timeout: float = 20.0) -> bool:
 def cluster():
     """Start dummy nodes + proxy, yield, then tear down."""
     env = os.environ.copy()
-    env["DUMMY_MODEL_ID"] = MODEL_PATH
     procs = []
 
     prefill_ports = [_free_port() for _ in range(NUM_PREFILL)]

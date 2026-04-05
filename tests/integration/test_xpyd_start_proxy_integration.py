@@ -26,8 +26,6 @@ ENV_BASE = {
     **os.environ,
     "PYTHONPATH": str(REPO_ROOT),
     "model_path": TOKENIZER_DIR,
-    "DUMMY_MODEL_ID": TOKENIZER_DIR,
-    "DUMMY_MAX_MODEL_LEN": "262144",
     "PREFILL_DELAY_PER_TOKEN": "0",
     "DECODE_DELAY_PER_TOKEN": "0",
     "NO_PROXY": "127.0.0.1,localhost",

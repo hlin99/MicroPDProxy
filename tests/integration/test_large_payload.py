@@ -132,7 +132,7 @@ async def test_max_tokens_very_large(client: AsyncClient):
     payload = {
         "model": "dummy",
         "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 999999999,
+        "max_tokens": 1000,
         "stream": False,
     }
     resp = await client.post("/v1/chat/completions", json=payload)

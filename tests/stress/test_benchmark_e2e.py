@@ -99,7 +99,6 @@ def _build_payload(model: str, stream: bool) -> dict[str, Any]:
 def cluster():
     """Spin up dummy nodes + proxy, yield connection info, tear down."""
     env = os.environ.copy()
-    env["DUMMY_MODEL_ID"] = MODEL_PATH
     # Speed up dummy nodes for benchmarking
     env["PREFILL_DELAY_PER_TOKEN"] = "0"
     env["DECODE_DELAY_PER_TOKEN"] = "0"
