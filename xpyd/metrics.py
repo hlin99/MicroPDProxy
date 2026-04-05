@@ -184,13 +184,14 @@ def record_pd_metrics(
     t_prefill_done: float,
     tracker: FirstTokenTracker,
     is_streaming: bool = False,
+    first_token_from_prefill: bool = False,
 ) -> None:
     """Record PD disaggregation metrics after a request completes.
 
-    Note on TTFT: In PD mode, the first token the user sees comes from the
-    prefill node (max_tokens=1). So TTFT = t_prefill_done - t_request_start.
-    The decode tracker measures the *decode* first-chunk time, which includes
-    KV transfer overhead.
+    Note on TTFT: TTFT depends on generator_on_p_node config:
+    - P-first: TTFT = prefill duration (first token from P)
+    - D-first (default): TTFT = prefill + KV transfer + decode first token
+    Controlled by first_token_from_prefill parameter.
 
     Note on TPOT: ``tracker.chunk_count`` counts raw HTTP chunks, not semantic
     tokens. TPOT is therefore approximate and only meaningful for streaming
@@ -211,12 +212,21 @@ def record_pd_metrics(
         model=model,
     ).observe(t_prefill_done - t_request_start)
 
-    # TTFT — user sees first token from prefill, so TTFT ≈ prefill duration
+    # TTFT — depends on which node emits the first user-visible token
+    if first_token_from_prefill:
+        # P-first: first token comes from prefill node
+        ttft = t_prefill_done - t_request_start
+    elif tracker.first_chunk_time is not None:
+        # D-first: first token comes from decode node
+        ttft = tracker.first_chunk_time - t_request_start
+    else:
+        # Fallback: no decode chunks received, use prefill duration
+        ttft = t_prefill_done - t_request_start
     proxy_ttft_seconds.labels(
         prefill_instance=prefill_instance,
         decode_instance=decode_instance,
         model=model,
-    ).observe(t_prefill_done - t_request_start)
+    ).observe(ttft)
 
     if tracker.first_chunk_time is not None:
         # KV transfer time (clamped to >= 0)
