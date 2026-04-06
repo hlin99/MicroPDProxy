@@ -1,0 +1,18 @@
+name: Trigger Integration Tests
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger integration tests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/xPyD-hub/xPyD-integration/dispatches \
+            -f event_type=release-check \
+            -f "client_payload[repo]=xPyD-proxy" \
+            -f "client_payload[version]=${{ github.event.release.tag_name }}"
