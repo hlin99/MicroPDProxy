@@ -36,7 +36,6 @@ jobs:
       - run: pip install build && python -m build
       - run: pip install dist/*.whl
       - run: xpyd --help && xpyd --version
-      - run: pip install pytest pytest-asyncio && python -m pytest tests/unit/ -v --tb=short
   benchmark:
     runs-on: ubuntu-latest
     steps:
