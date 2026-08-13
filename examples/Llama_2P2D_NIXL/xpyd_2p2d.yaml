@@ -1,0 +1,18 @@
+# All addresses are loopback placeholders: prefill/decode lists are backend hosts; no proxy host is required for NIXL.
+model: "/workspace/Meta-Llama-3-8B-Instruct/"
+prefill:
+  - "127.0.0.1:8100"
+  - "127.0.0.1:8101"
+decode:
+  - "127.0.0.1:8200"
+  - "127.0.0.1:8201"
+
+kv_transfer_backend: nixl
+scheduling: roundrobin
+first_token_source: decode
+port: 8868
+log_level: info
+
+startup:
+  wait_timeout_seconds: 1200
+  probe_interval_seconds: 2

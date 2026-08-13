@@ -1,0 +1,19 @@
+# All addresses are loopback placeholders: dual entries are backend hosts; xPyD listens on port 8868.
+model: "/workspace/Meta-Llama-3-8B-Instruct/"
+scheduling: roundrobin
+
+models:
+  - name: "/workspace/Meta-Llama-3-8B-Instruct/"
+    dual:
+      - "127.0.0.1:8000"
+      - "127.0.0.1:8001"
+      - "127.0.0.1:8002"
+      - "127.0.0.1:8003"
+    scheduler: roundrobin
+
+port: 8868
+log_level: info
+
+startup:
+  wait_timeout_seconds: 1200
+  probe_interval_seconds: 2

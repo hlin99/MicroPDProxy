@@ -1,0 +1,16 @@
+# pd_proxy_host is the loopback proxy host placeholder for this prefill sender.
+local_cpu: false
+max_local_cpu_size: 0
+max_local_disk_size: 0
+
+enable_pd: true
+transfer_channel: "nixl"
+pd_role: "sender"
+pd_proxy_host: "127.0.0.1"
+pd_proxy_port: 7500
+pd_buffer_size: 2147483648
+pd_buffer_device: "cuda"
+nixl_backends: [UCX]
+pd_backend_mode: "async"
+pd_max_prefill_len: 16384
+pd_allocation_timeout_sec: 10

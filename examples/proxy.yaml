@@ -17,7 +17,9 @@ log_level: warning              # debug | info | warning | error
 # ============================================================
 # Nodes (topology style)
 # ============================================================
-# Each node entry is "ip:base_port".  The topology parameters
+# Each node entry is "host:base_port". The placeholder host names below are
+# non-sensitive examples: prefill nodes are prefill backend hosts, decode nodes
+# are decode backend hosts, and `port` above is the proxy listen port. The topology parameters
 # control how many vLLM instances run per node and how ports
 # are assigned.
 #
@@ -28,25 +30,25 @@ log_level: warning              # debug | info | warning | error
 
 prefill:
   nodes:
-    - "10.0.0.1:8100"
-    - "10.0.0.2:8100"
+    - "PREFILL_HOST_1:8100"
+    - "PREFILL_HOST_2:8100"
   tp_size: 8
   dp_size: 2
   world_size_per_node: 8
   # Expands to:
-  #   10.0.0.1:8100  (1 instance per node, TP=8)
-  #   10.0.0.2:8100
+  #   PREFILL_HOST_1:8100  (1 instance per node, TP=8)
+  #   PREFILL_HOST_2:8100
 
 decode:
   nodes:
-    - "10.0.0.3:8200"
-    - "10.0.0.4:8200"
+    - "DECODE_HOST_1:8200"
+    - "DECODE_HOST_2:8200"
   tp_size: 1
   dp_size: 16
   world_size_per_node: 8
   # Expands to 8 instances per node (TP=1, 8 GPUs each):
-  #   10.0.0.3:8200 .. 10.0.0.3:8207
-  #   10.0.0.4:8200 .. 10.0.0.4:8207
+  #   DECODE_HOST_1:8200 .. DECODE_HOST_1:8207
+  #   DECODE_HOST_2:8200 .. DECODE_HOST_2:8207
 
 # ============================================================
 # Scheduling
