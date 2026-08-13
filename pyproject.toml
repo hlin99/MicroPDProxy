@@ -20,6 +20,8 @@ dependencies = [
     "transformers>=4.38.0",
     "prometheus-client>=0.20.0",
     "PyYAML>=6.0",
+    "msgspec>=0.18.0",
+    "pyzmq>=25.0.0",
 ]
 
 [project.optional-dependencies]

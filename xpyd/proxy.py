@@ -157,11 +157,12 @@ class Proxy:
                      [Request], StreamingResponse]] = None,
                  custom_create_chat_completion: Optional[Callable[
                      [Request], StreamingResponse]] = None,
-                 generator_on_p_node: bool = False,
+                 first_token_source: str = "decode",
                  registry: Optional[InstanceRegistry] = None,
                  dual_instances: Optional[dict[str, list[str]]] = None,
                  model_schedulers: Optional[dict[str, str]] = None,
-                 kv_transfer_backend: str = "none"):
+                 pd_mode: str = "direct",
+                 zmq_config=None):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.prefill_cycler = itertools.cycle(prefill_instances)
@@ -171,15 +172,22 @@ class Proxy:
         self.registry = registry
         self.dual_instances = dual_instances or {}
         self.model_schedulers = model_schedulers or {}
-        self.kv_transfer_backend = kv_transfer_backend
+        self.pd_mode = pd_mode
+        self.first_token_source = first_token_source
+        self.kv_transfer_backend = "nixl" if pd_mode == "nixl" else "none"
+        self.zmq_config = zmq_config
+        self.zmq_notifications = None
         self._dual_rr_counters: dict[str, int] = {}
         self._dual_policies: dict[str, SchedulingPolicy] = {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
         self.router = APIRouter()
         self.setup_routes()
-        self.generator = (P_first_token_generator
-                          if generator_on_p_node else D_first_token_generator)
+        self.generator = (
+            P_first_token_generator
+            if first_token_source == "prefill"
+            else D_first_token_generator
+        )
         self.d_first_token_generator_class = D_first_token_generator
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
@@ -755,11 +763,12 @@ class ProxyServer:
             scheduling_policy=global_policy,
             custom_create_completion=create_completion,
             custom_create_chat_completion=create_chat_completion,
-            generator_on_p_node=config.generator_on_p_node,
+            first_token_source=config.first_token_source,
             registry=self.registry,
             dual_instances=dual_instances,
             model_schedulers=model_scheduler_config,
-            kv_transfer_backend=config.kv_transfer_backend,
+            pd_mode=config.pd_mode,
+            zmq_config=config.zmq,
         )
 
     def verify_model_config(self, instances: list, model: str) -> None:
@@ -809,6 +818,18 @@ class ProxyServer:
 
         @app.on_event("startup")
         async def _start_discovery():
+            if self.config.pd_mode == "zmq":
+                from xpyd.zmq_notifications import ZmqNotificationListener
+
+                zmq_config = self.config.zmq
+                assert zmq_config is not None
+                listener = ZmqNotificationListener(
+                    zmq_config.host,
+                    zmq_config.port,
+                    zmq_config.notification_timeout_seconds,
+                )
+                await listener.start()
+                self.proxy_instance.zmq_notifications = listener
             await discovery.start()
             if self.health_monitor:
                 await self.health_monitor.start()
@@ -816,6 +837,8 @@ class ProxyServer:
         @app.on_event("shutdown")
         async def _stop_discovery():
             await discovery.stop()
+            if self.proxy_instance.zmq_notifications is not None:
+                await self.proxy_instance.zmq_notifications.stop()
             if self.health_monitor:
                 await self.health_monitor.stop()
 
@@ -886,6 +909,14 @@ def _build_parser():
     proxy_parser.add_argument(
         "--log-level", type=str, default=None, dest="log_level",
         help="Override log level: debug|info|warning|error",
+    )
+    proxy_parser.add_argument(
+        "--pd-mode", choices=("direct", "nixl", "zmq"), default=None,
+        help="PD transfer mode (default: config value or direct)",
+    )
+    proxy_parser.add_argument(
+        "--first-token-source", choices=("prefill", "decode"), default=None,
+        help="Backend that provides the first client-visible token",
     )
 
     # fix-config subcommand
@@ -977,6 +1008,12 @@ def main() -> None:
             config = config.model_copy(update={"port": args.port})
         if args.log_level is not None:
             config = config.model_copy(update={"log_level": args.log_level})
+        if args.pd_mode is not None:
+            config = config.model_copy(update={"pd_mode": args.pd_mode})
+        if args.first_token_source is not None:
+            config = config.model_copy(
+                update={"first_token_source": args.first_token_source}
+            )
 
         proxy_server = ProxyServer(config=config)
         proxy_server.run_server()

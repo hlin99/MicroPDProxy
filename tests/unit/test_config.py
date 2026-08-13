@@ -21,6 +21,7 @@ class TestProxyConfigValidation:
         assert cfg.decode == ["10.0.0.1:8000"]
         assert cfg.port == 8000
         assert cfg.kv_transfer_backend == "none"
+        assert cfg.first_token_source == "decode"
 
     def test_nixl_kv_transfer_backend(self):
         cfg = ProxyConfig(
@@ -44,6 +45,7 @@ class TestProxyConfigValidation:
         )
         assert cfg.port == 9000
         assert cfg.generator_on_p_node is True
+        assert cfg.first_token_source == "prefill"
         assert cfg.roundrobin is True
         assert cfg.admin_api_key == "secret"
 
@@ -95,6 +97,7 @@ class TestProxyConfigValidation:
         cfg = ProxyConfig(model="m", decode=["10.0.0.1:8000"])
         assert cfg.port == 8000
         assert cfg.generator_on_p_node is False
+        assert cfg.first_token_source == "decode"
         assert cfg.roundrobin is False
         assert cfg.admin_api_key is None
         assert cfg.openai_api_key is None
@@ -200,6 +203,20 @@ class TestProxyConfigFromYaml:
         with patch.dict(os.environ, {"ADMIN_API_KEY": "env-key"}):
             cfg = ProxyConfig.from_yaml(str(p))
         assert cfg.admin_api_key == "env-key"
+
+    @pytest.mark.parametrize("pd_mode", ["direct", "nixl"])
+    @pytest.mark.parametrize("source", ["prefill", "decode"])
+    def test_first_token_source_supported_for_pd_modes(
+        self, pd_mode, source
+    ):
+        cfg = ProxyConfig(
+            model="m",
+            prefill=["10.0.0.1:8001"],
+            decode=["10.0.0.2:8002"],
+            pd_mode=pd_mode,
+            first_token_source=source,
+        )
+        assert cfg.first_token_source == source
 
     def test_from_yaml_file_not_found(self):
         with pytest.raises(FileNotFoundError):

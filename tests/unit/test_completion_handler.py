@@ -7,6 +7,7 @@ from starlette.responses import JSONResponse
 
 from xpyd.routes.completions import (
     build_kv_prepare_request,
+    build_zmq_prepare_request,
     extract_prompt_info,
     handle_completion,
     validate_completion_request,
@@ -263,6 +264,35 @@ class TestBuildKvPrepareRequest:
             "remote_port": None,
         }
         assert req["stream"] is True
+
+
+class TestBuildZmqPrepareRequest:
+    """Tests for LMCache ZMQ prefill request construction."""
+
+    @pytest.fixture
+    def receiver(self):
+        receiver = MagicMock()
+        receiver.host = "127.0.0.1"
+        receiver.init_ports = [7300]
+        receiver.alloc_ports = [7400]
+        return receiver
+
+    @pytest.mark.parametrize("source", ["prefill", "decode"])
+    def test_first_token_source(self, receiver, source):
+        result = build_zmq_prepare_request(
+            {"prompt": "test", "max_tokens": 10, "stream": True},
+            [1, 2, 3],
+            "request-1",
+            receiver,
+            source,
+        )
+
+        params = result["kv_transfer_params"]
+        assert ("ret_first_tok" in params) is (source == "prefill")
+        assert params["disagg_spec"]["req_id"] == "request-1"
+        assert result["prompt"] == [1, 2, 3]
+        assert result["max_tokens"] == 1
+        assert result["stream"] is False
 
 
 class TestHandleCompletion:

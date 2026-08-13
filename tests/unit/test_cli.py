@@ -89,6 +89,18 @@ class TestSubcommandParser:
         args = parser.parse_args(["proxy", "-c", "x.yaml", "--log-level", "debug"])
         assert args.log_level == "debug"
 
+    def test_pd_mode_override(self):
+        parser = _build_parser()
+        args = parser.parse_args(["proxy", "-c", "x.yaml", "--pd-mode", "zmq"])
+        assert args.pd_mode == "zmq"
+
+    def test_first_token_source_override(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["proxy", "-c", "x.yaml", "--first-token-source", "prefill"]
+        )
+        assert args.first_token_source == "prefill"
+
     def test_no_config_file_error_message(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         env = {k: v for k, v in os.environ.items() if k != "XPYD_CONFIG"}

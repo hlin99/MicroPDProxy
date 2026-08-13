@@ -52,7 +52,7 @@ decode:
 # Scheduling
 # ============================================================
 scheduling: loadbalanced        # roundrobin | loadbalanced
-generator_on_p_node: false      # generate first token on prefill node
+first_token_source: decode      # prefill | decode
 
 # ============================================================
 # Auth (optional)

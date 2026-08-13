@@ -106,6 +106,98 @@ def build_kv_prepare_request(
     return kv_prepare_request
 
 
+def build_zmq_prepare_request(
+    request: dict,
+    prompt_tokens: list[int],
+    request_id: str,
+    receiver,
+    first_token_source: str,
+) -> dict:
+    """Build an LMCache sender request for a preselected decode instance."""
+    prepare = request.copy()
+    prepare["prompt"] = prompt_tokens
+    prepare["max_tokens"] = 1
+    prepare["stream"] = False
+    prepare.pop("stream_options", None)
+    transfer_params = {
+        "disagg_spec": {
+            "req_id": request_id,
+            "receiver_host": receiver.host,
+            "receiver_init_port": receiver.init_ports,
+            "receiver_alloc_port": receiver.alloc_ports,
+        }
+    }
+    if first_token_source == "prefill":
+        transfer_params["ret_first_tok"] = True
+    prepare["kv_transfer_params"] = transfer_params
+    return prepare
+
+
+async def _zmq_stream_generator(
+    prefill_output: dict,
+    decode_generator,
+    server: Proxy,
+    prefill_instance: str,
+    decode_instance: str,
+    request_len: int,
+):
+    """Return the P token followed by every streamed D token."""
+    head = {
+        "id": prefill_output["id"],
+        "object": "text_completion",
+        "created": prefill_output["created"],
+        "model": prefill_output["model"],
+        "choices": [{
+            "index": 0,
+            "text": prefill_output["choices"][0]["text"],
+            "logprobs": None,
+            "finish_reason": None,
+        }],
+        "usage": None,
+    }
+    yield f"data: {json.dumps(head, separators=(',', ':'))}\n\n".encode()
+    try:
+        async for chunk in decode_generator:
+            yield chunk
+    finally:
+        server.exception_handler(
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
+            req_len=request_len,
+        )
+
+
+async def _zmq_nonstream_generator(
+    prefill_output: dict,
+    decode_generator,
+    server: Proxy,
+    prefill_instance: str,
+    decode_instance: str,
+    request_len: int,
+):
+    """Merge the P token into the non-streaming D response."""
+    value = b""
+    try:
+        async for chunk in decode_generator:
+            value += chunk
+        output = json.loads(value)
+        output["choices"][0]["text"] = (
+            prefill_output["choices"][0]["text"]
+            + output["choices"][0]["text"]
+        )
+        usage = output.get("usage")
+        if isinstance(usage, dict):
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + 1
+            usage["total_tokens"] = usage.get("total_tokens", 0) + 1
+        yield json.dumps(output, separators=(",", ":")).encode()
+    finally:
+        server.exception_handler(
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
+            req_len=request_len,
+        )
+
+
 async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, is_chat: bool) -> JSONResponse | StreamingResponse:
     """Unified completion handler for both /v1/completions and /v1/chat/completions."""
     _metrics_start = track_request_start(endpoint)
@@ -152,11 +244,15 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 requested_model, total_length, max_tokens, prompt_text,
                 _metrics_start, handler_name,
             )
+        if server.pd_mode == "zmq" and is_chat:
+            return error_response(
+                "ZMQ PD mode currently supports /v1/completions only",
+                PROXY_ERROR,
+                501,
+            )
 
         kv_prepare_request = build_kv_prepare_request(
-            request,
-            is_chat,
-            server.kv_transfer_backend,
+            request, is_chat, server.kv_transfer_backend,
         )
         upstream_headers = None
         if server.kv_transfer_backend == "nixl":
@@ -225,6 +321,30 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             ).inc()
             return error_response("No available instance can handle the request", PROXY_ERROR, 503)
 
+        zmq_request_id = None
+        if server.pd_mode == "zmq":
+            if server.zmq_notifications is None or server.zmq_config is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail="ZMQ notification listener is not ready",
+                )
+            receiver = server.zmq_config.receivers[decode_instance]
+            zmq_request_id = str(uuid.uuid4())
+            prompt = request["prompt"]
+            prompt_tokens = (
+                list(prompt)
+                if isinstance(prompt, list)
+                else server.tokenizer.encode(prompt)
+            )
+            kv_prepare_request = build_zmq_prepare_request(
+                request,
+                prompt_tokens,
+                zmq_request_id,
+                receiver,
+                server.first_token_source,
+            )
+            await server.zmq_notifications.register(zmq_request_id)
+
         # Track per-instance request counters
         proxy_prefill_requests_total.labels(
             prefill_instance=prefill_instance, decode_instance=decode_instance,
@@ -250,6 +370,8 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             ):
                 value += chunk
         except HTTPException as http_exc:
+            if zmq_request_id is not None:
+                await server.zmq_notifications.discard(zmq_request_id)
             server.exception_handler(prefill_instance, decode_instance, total_length)
             server._record_failure(prefill_instance, decode_instance)
             proxy_instance_errors_total.labels(
@@ -292,6 +414,40 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 )
             request = request.copy()
             request["kv_transfer_params"] = kv_transfer_params
+        elif server.pd_mode == "zmq":
+            prefill_output = None
+            first_token = None
+            if server.first_token_source == "prefill":
+                try:
+                    prefill_output = json.loads(value)
+                    first_token = prefill_output["kv_transfer_params"]["first_tok"]
+                except (json.JSONDecodeError, KeyError, TypeError) as exc:
+                    assert zmq_request_id is not None
+                    await server.zmq_notifications.discard(zmq_request_id)
+                    raise HTTPException(
+                        status_code=502,
+                        detail=(
+                            "Prefill response did not contain an LMCache "
+                            "first token"
+                        ),
+                    ) from exc
+            receiver = server.zmq_config.receivers[decode_instance]
+            try:
+                await server.zmq_notifications.wait(
+                    zmq_request_id,
+                    len(receiver.init_ports),
+                )
+            except TimeoutError as exc:
+                raise HTTPException(
+                    status_code=504,
+                    detail=f"Timed out waiting for ZMQ notification {zmq_request_id}",
+                ) from exc
+            request = request.copy()
+            request["prompt"] = list(kv_prepare_request["prompt"])
+            if server.first_token_source == "prefill":
+                request["prompt"].append(first_token)
+                request["max_tokens"] = max(1, max_tokens - 1)
+            request.pop("kv_transfer_params", None)
 
         async def streaming_response(value):
             if value:
@@ -312,23 +468,51 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         decode_tracker = FirstTokenTracker(generator_d_raw)
         generator_d = decode_tracker
 
-        if request.get("stream", False):
-            generator_class = server.generator
+        if (
+            server.pd_mode == "zmq"
+            and server.first_token_source == "prefill"
+        ):
+            assert prefill_output is not None
+            if request.get("stream", False):
+                final_generator = _zmq_stream_generator(
+                    prefill_output,
+                    generator_d,
+                    server,
+                    prefill_instance,
+                    decode_instance,
+                    total_length,
+                )
+            else:
+                final_generator = _zmq_nonstream_generator(
+                    prefill_output,
+                    generator_d,
+                    server,
+                    prefill_instance,
+                    decode_instance,
+                    total_length,
+                )
+            first_token_from_p = True
         else:
-            generator_class = server.d_first_token_generator_class
-        # Determine if user's first token comes from prefill or decode node.
-        # P_first_token_generator yields P's token first; D_first_token_generator
-        # discards P's token and yields D's tokens only.
-        from xpyd.proxy import P_first_token_generator
-        first_token_from_p = (generator_class is P_first_token_generator)
-        final_generator = generator_class(
-            generator_p,
-            generator_d,
-            server,
-            prefill_instance,
-            decode_instance,
-            req_len=total_length,
-        )
+            if request.get("stream", False):
+                generator_class = server.generator
+            else:
+                generator_class = server.d_first_token_generator_class
+            # Determine if user's first token comes from prefill or decode node.
+            # P_first_token_generator yields P's token first; D_first_token_generator
+            # discards P's token and yields D's tokens only.
+            from xpyd.proxy import P_first_token_generator
+            first_token_from_p = (
+                server.first_token_source == "prefill"
+                and generator_class is P_first_token_generator
+            )
+            final_generator = generator_class(
+                generator_p,
+                generator_d,
+                server,
+                prefill_instance,
+                decode_instance,
+                req_len=total_length,
+            )
         media_type = (
             "text/event-stream"
             if request.get("stream", False)

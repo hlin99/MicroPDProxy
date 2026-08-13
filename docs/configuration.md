@@ -41,7 +41,7 @@ decode:
 
 # Scheduling
 scheduling: loadbalanced        # roundrobin | loadbalanced
-generator_on_p_node: false      # whether the generator runs on prefill nodes
+first_token_source: decode       # prefill | decode; applies to every PD mode
 
 # Authentication
 admin_api_key: ""               # env override: ADMIN_API_KEY
@@ -69,7 +69,7 @@ startup:
 | `decode.dp_size` | integer | **yes** | — | Total number of decode data-parallel instances. |
 | `decode.world_size_per_node` | integer | **yes** | — | Number of GPUs / workers per decode node. |
 | `scheduling` | string | no | `loadbalanced` | Scheduling policy name. Currently `roundrobin` or `loadbalanced`. |
-| `generator_on_p_node` | boolean | no | `false` | If `true`, the generation loop runs on prefill nodes. |
+| `first_token_source` | string | no | `decode` | Backend that provides the first client-visible token. `prefill` and `decode` are supported uniformly in direct, NIXL, and ZMQ modes. |
 | `admin_api_key` | string | no | `""` | API key for admin endpoints. Can also be set via `ADMIN_API_KEY` env var. |
 | `openai_api_key` | string | no | `""` | API key for OpenAI-compatible endpoints. Can also be set via `OPENAI_API_KEY` env var. |
 | `startup.wait_timeout_seconds` | integer | no | `600` | Maximum time (seconds) to wait for at least 1 prefill + 1 decode node during startup. |

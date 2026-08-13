@@ -30,8 +30,8 @@ log_level: "warning"
 # Scheduling policy: loadbalanced | roundrobin | consistent_hash | power_of_two | cache_aware
 scheduling: "loadbalanced"
 
-# Generate first token on prefill node (default: false)
-generator_on_p_node: false
+# Backend that provides the first client-visible token: prefill | decode
+first_token_source: "decode"
 
 # Startup probe settings
 startup:

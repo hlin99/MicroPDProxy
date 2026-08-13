@@ -53,6 +53,42 @@ class HealthCheckConfig(BaseModel):
     timeout_seconds: float = 3.0
 
 
+class ZmqReceiverConfig(BaseModel):
+    """LMCache receiver endpoint associated with one decode instance."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str
+    init_ports: List[int]
+    alloc_ports: List[int]
+
+    @model_validator(mode="after")
+    def _matching_ports(self) -> "ZmqReceiverConfig":
+        if not self.init_ports or len(self.init_ports) != len(self.alloc_ports):
+            raise ValueError(
+                "init_ports and alloc_ports must be non-empty and have equal length"
+            )
+        return self
+
+
+class ZmqConfig(BaseModel):
+    """LMCache ProxyNotif listener and decode receiver mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = "127.0.0.1"
+    port: int = 7500
+    notification_timeout_seconds: float = 30.0
+    receivers: Dict[str, ZmqReceiverConfig]
+
+    @field_validator("port")
+    @classmethod
+    def _valid_port(cls, value: int) -> int:
+        if not (1 <= value <= 65535):
+            raise ValueError("port must be between 1 and 65535")
+        return value
+
+
 class InstanceEntry(BaseModel):
     """Per-instance entry for multi-model configuration."""
 
@@ -109,7 +145,10 @@ class ProxyConfig(BaseModel):
     port: int = 8000
     log_level: str = "warning"
     generator_on_p_node: bool = False
+    first_token_source: Literal["prefill", "decode"] = "decode"
+    pd_mode: Literal["direct", "nixl", "zmq"] = "direct"
     kv_transfer_backend: Literal["none", "nixl"] = "none"
+    zmq: Optional[ZmqConfig] = None
     roundrobin: bool = False
     scheduling: str = "loadbalanced"
     scheduling_config: Dict[str, Any] = Field(default_factory=dict)
@@ -121,6 +160,30 @@ class ProxyConfig(BaseModel):
     circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
     retry: ResilienceConfig = ResilienceConfig()
     _model_schedulers: Dict[str, str] = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _normalize_pd_mode(self) -> "ProxyConfig":
+        if self.generator_on_p_node:
+            self.first_token_source = "prefill"
+        if self.kv_transfer_backend == "nixl":
+            if self.pd_mode not in ("direct", "nixl"):
+                raise ValueError(
+                    "kv_transfer_backend=nixl conflicts with pd_mode="
+                    f"{self.pd_mode}"
+                )
+            self.pd_mode = "nixl"
+        if self.pd_mode == "nixl":
+            self.kv_transfer_backend = "nixl"
+        if self.pd_mode == "zmq":
+            if self.zmq is None:
+                raise ValueError("pd_mode=zmq requires a zmq configuration")
+            missing = set(self.decode) - set(self.zmq.receivers)
+            if missing:
+                raise ValueError(
+                    "zmq.receivers is missing decode instances: "
+                    f"{sorted(missing)}"
+                )
+        return self
 
     # ------------------------------------------------------------------
     # Validators
