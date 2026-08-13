@@ -381,6 +381,13 @@ async def _handle_dual_completion(
         model,
         request_len=total_length,
         max_tokens=max_tokens,
+        header=raw_request.headers.get("x-session-id"),
+        session_id=request.get("session_id"),
+        user=request.get("user"),
+        client_ip=(
+            raw_request.client.host if raw_request.client else None
+        ),
+        prompt=prompt_text,
     )
 
     logger.info(

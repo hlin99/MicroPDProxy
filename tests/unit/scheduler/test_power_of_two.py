@@ -49,6 +49,18 @@ class TestPowerOfTwoSelect:
         # All workers should get some traffic
         assert len(counts) > 1
 
+    def test_select_from_uses_external_loads(self):
+        policy = PowerOfTwoPolicy(workers=["w1", "w2"])
+        result = policy.select_from(
+            {"w1", "w2"},
+            loads={"w1": 10, "w2": 1},
+        )
+        assert result == "w2"
+
+    def test_select_from_empty_candidates(self):
+        policy = PowerOfTwoPolicy(workers=["w1", "w2"])
+        assert policy.select_from(set()) is None
+
 
 class TestWorkerManagement:
     """Test add/remove worker operations."""

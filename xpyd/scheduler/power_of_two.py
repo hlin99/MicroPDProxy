@@ -100,6 +100,28 @@ class PowerOfTwoPolicy(SchedulingPolicy):
             self._load[selected] = self._load.get(selected, 0) + 1
             return selected
 
+    def select_from(
+        self,
+        candidates: set[str],
+        *,
+        loads: dict[str, int] | None = None,
+    ) -> str | None:
+        """Select from available candidates using external load information."""
+        with self.lock:
+            workers = sorted(candidates)
+            if not workers:
+                return None
+            if len(workers) == 1:
+                self._last_pair = (workers[0],)
+                return workers[0]
+
+            pair = random.sample(workers, 2)
+            self._last_pair = tuple(pair)
+            current_load = loads if loads is not None else self._load
+            if current_load.get(pair[0], 0) <= current_load.get(pair[1], 0):
+                return pair[0]
+            return pair[1]
+
     # ------------------------------------------------------------------
     # SchedulingPolicy interface
     # ------------------------------------------------------------------

@@ -18,7 +18,7 @@ import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, cast
 
 import aiohttp
 import requests
@@ -35,7 +35,10 @@ from xpyd.health_monitor import HealthMonitor
 from xpyd.registry import InstanceRegistry
 from xpyd.routes import register_routes
 from xpyd.scheduler import (
+    CacheAwarePolicy,
+    ConsistentHashPolicy,
     LoadBalancedScheduler,
+    PowerOfTwoPolicy,
     RoundRobinSchedulingPolicy,
     SchedulingPolicy,
     default_registry,
@@ -168,6 +171,7 @@ class Proxy:
         self.dual_instances = dual_instances or {}
         self.model_schedulers = model_schedulers or {}
         self._dual_rr_counters: dict[str, int] = {}
+        self._dual_policies: dict[str, SchedulingPolicy] = {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
         self.router = APIRouter()
@@ -187,11 +191,8 @@ class Proxy:
         Scheduling strategy follows the per-model fallback chain:
         model-level scheduler → global scheduling_policy → round-robin.
 
-        For 'loadbalanced': picks the instance with lowest active requests.
-        For 'roundrobin' and others: cycles through available instances.
-
-        kwargs (request_len, max_tokens) are accepted for future
-        load-aware scheduling extensions.
+        Supports load-balanced, round-robin, consistent-hash, power-of-two,
+        and cache-aware selection.
         """
         if model not in self.dual_instances:
             return None
@@ -210,8 +211,10 @@ class Proxy:
         # Determine scheduler strategy for this model
         # Fallback chain: model-level → global policy type → load_balanced
         strategy = self.model_schedulers.get(model, "")
-        # Normalize: "load_balanced" → "loadbalanced", "round_robin" → "roundrobin"
-        strategy = strategy.replace("_", "")
+        strategy = {
+            "load_balanced": "loadbalanced",
+            "round_robin": "roundrobin",
+        }.get(strategy, strategy)
 
         if not strategy:
             # Fall back to global policy type
@@ -219,6 +222,12 @@ class Proxy:
                 strategy = "loadbalanced"
             elif isinstance(self.scheduling_policy, RoundRobinSchedulingPolicy):
                 strategy = "roundrobin"
+            elif isinstance(self.scheduling_policy, ConsistentHashPolicy):
+                strategy = "consistent_hash"
+            elif isinstance(self.scheduling_policy, PowerOfTwoPolicy):
+                strategy = "power_of_two"
+            elif isinstance(self.scheduling_policy, CacheAwarePolicy):
+                strategy = "cache_aware"
             else:
                 # Default fallback: load_balanced
                 strategy = "loadbalanced"
@@ -226,17 +235,74 @@ class Proxy:
         # Load-balanced: pick instance with lowest active requests
         if strategy == "loadbalanced":
             selected = self._schedule_dual_load_balanced(available)
+        elif strategy == "consistent_hash":
+            policy = cast(
+                ConsistentHashPolicy,
+                self._get_dual_policy(model, strategy, instances),
+            )
+            selected = policy.select_from(
+                set(available),
+                header=kwargs.get("header"),
+                session_id=kwargs.get("session_id"),
+                user=kwargs.get("user"),
+                client_ip=kwargs.get("client_ip"),
+            )
+        elif strategy == "power_of_two":
+            policy = cast(
+                PowerOfTwoPolicy,
+                self._get_dual_policy(model, strategy, instances),
+            )
+            loads = (
+                {
+                    instance: self.registry.get_active_requests(instance)
+                    for instance in available
+                }
+                if self.registry is not None
+                else None
+            )
+            selected = policy.select_from(set(available), loads=loads)
+        elif strategy == "cache_aware":
+            policy = cast(
+                CacheAwarePolicy,
+                self._get_dual_policy(model, strategy, instances),
+            )
+            selected = policy.select_from(
+                set(available),
+                prompt=kwargs.get("prompt"),
+            )
         else:
-            # Round-robin for 'roundrobin' and other strategies.
             # No lock needed: schedule_dual is called from async handlers
             # in the single-threaded event loop; no concurrent mutation.
             idx = self._dual_rr_counters.get(model, 0) % len(available)
             self._dual_rr_counters[model] = idx + 1
             selected = available[idx]
 
+        if selected is None:
+            return None
         if self.registry is not None:
             self.registry.increment_active_requests(selected)
         return selected
+
+    def _get_dual_policy(
+        self,
+        model: str,
+        strategy: str,
+        instances: list[str],
+    ) -> SchedulingPolicy:
+        """Return the cached advanced scheduling policy for a dual model."""
+        policy = self._dual_policies.get(model)
+        if policy is not None:
+            return policy
+
+        options: dict[str, Any] = {
+            "workers": instances,
+            "registry": self.registry,
+        }
+        if strategy == "cache_aware":
+            options["tokenizer"] = self.tokenizer
+        policy = default_registry.create(strategy, **options)
+        self._dual_policies[model] = policy
+        return policy
 
     def _schedule_dual_load_balanced(self, available: list[str]) -> str:
         """Pick the dual instance with the lowest active request count."""

@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from xpyd.registry import InstanceRegistry
 
@@ -198,6 +198,99 @@ class TestPerModelSchedulerDispatch:
         # Round-robin: alternates
         assert results[0] != results[1]
         assert results[0] == results[2]
+
+    def test_consistent_hash_keeps_session_on_same_instance(self):
+        """Consistent hash keeps repeated session IDs on one dual instance."""
+        from xpyd.proxy import Proxy
+        from xpyd.scheduler import RoundRobinSchedulingPolicy
+
+        proxy = MagicMock()
+        proxy.dual_instances = {
+            "qwen-2": ["10.0.0.1:8000", "10.0.0.2:8000"],
+        }
+        proxy.registry = self.reg
+        proxy.scheduling_policy = RoundRobinSchedulingPolicy(registry=self.reg)
+        proxy.model_schedulers = {"qwen-2": "consistent_hash"}
+        proxy._dual_policies = {}
+        proxy.tokenizer = MagicMock()
+        proxy._get_dual_policy = lambda model, strategy, instances: (
+            Proxy._get_dual_policy(proxy, model, strategy, instances)
+        )
+
+        first = Proxy.schedule_dual(
+            proxy,
+            "qwen-2",
+            header="session-123",
+        )
+        second = Proxy.schedule_dual(
+            proxy,
+            "qwen-2",
+            header="session-123",
+        )
+
+        assert first == second
+
+    def test_power_of_two_picks_lower_load_from_sampled_pair(self):
+        """Power-of-two compares live loads for its sampled dual pair."""
+        from xpyd.proxy import Proxy
+        from xpyd.scheduler import RoundRobinSchedulingPolicy
+
+        proxy = MagicMock()
+        proxy.dual_instances = {
+            "qwen-2": ["10.0.0.1:8000", "10.0.0.2:8000"],
+        }
+        proxy.registry = self.reg
+        proxy.scheduling_policy = RoundRobinSchedulingPolicy(registry=self.reg)
+        proxy.model_schedulers = {"qwen-2": "power_of_two"}
+        proxy._dual_policies = {}
+        proxy.tokenizer = MagicMock()
+        proxy._get_dual_policy = lambda model, strategy, instances: (
+            Proxy._get_dual_policy(proxy, model, strategy, instances)
+        )
+        for _ in range(3):
+            self.reg.increment_active_requests("10.0.0.1:8000")
+
+        with patch(
+            "xpyd.scheduler.power_of_two.random.sample",
+            return_value=["10.0.0.1:8000", "10.0.0.2:8000"],
+        ):
+            result = Proxy.schedule_dual(proxy, "qwen-2")
+
+        assert result == "10.0.0.2:8000"
+
+    def test_cache_aware_keeps_same_prefix_on_same_instance(self):
+        """Cache-aware routing keeps repeated prefixes on one dual instance."""
+        from xpyd.proxy import Proxy
+        from xpyd.scheduler import RoundRobinSchedulingPolicy
+
+        proxy = MagicMock()
+        proxy.dual_instances = {
+            "qwen-2": ["10.0.0.1:8000", "10.0.0.2:8000"],
+        }
+        proxy.registry = self.reg
+        proxy.scheduling_policy = RoundRobinSchedulingPolicy(registry=self.reg)
+        proxy.model_schedulers = {"qwen-2": "cache_aware"}
+        proxy._dual_policies = {}
+        proxy.tokenizer = MagicMock()
+        proxy.tokenizer.encode.side_effect = lambda prompt: list(
+            prompt.encode(),
+        )
+        proxy._get_dual_policy = lambda model, strategy, instances: (
+            Proxy._get_dual_policy(proxy, model, strategy, instances)
+        )
+
+        first = Proxy.schedule_dual(
+            proxy,
+            "qwen-2",
+            prompt="shared prefix and request one",
+        )
+        second = Proxy.schedule_dual(
+            proxy,
+            "qwen-2",
+            prompt="shared prefix and request one",
+        )
+
+        assert first == second
 
 
 class TestScheduleDualRoundRobinMultiple:
