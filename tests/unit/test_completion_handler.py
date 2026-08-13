@@ -239,6 +239,31 @@ class TestBuildKvPrepareRequest:
         assert result["max_completion_tokens"] == 1
         assert req["max_tokens"] == 50
 
+    def test_nixl_remote_decode(self):
+        req = {
+            "prompt": "test",
+            "max_tokens": 50,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        result = build_kv_prepare_request(
+            req,
+            is_chat=False,
+            kv_transfer_backend="nixl",
+        )
+
+        assert result["stream"] is False
+        assert "stream_options" not in result
+        assert result["kv_transfer_params"] == {
+            "do_remote_decode": True,
+            "do_remote_prefill": False,
+            "remote_engine_id": None,
+            "remote_block_ids": None,
+            "remote_host": None,
+            "remote_port": None,
+        }
+        assert req["stream"] is True
+
 
 class TestHandleCompletion:
     """Integration-level tests for handle_completion."""

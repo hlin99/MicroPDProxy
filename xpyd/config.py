@@ -15,7 +15,7 @@ from __future__ import annotations
 import ipaddress
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import yaml
 from pydantic import (
@@ -109,6 +109,7 @@ class ProxyConfig(BaseModel):
     port: int = 8000
     log_level: str = "warning"
     generator_on_p_node: bool = False
+    kv_transfer_backend: Literal["none", "nixl"] = "none"
     roundrobin: bool = False
     scheduling: str = "loadbalanced"
     scheduling_config: Dict[str, Any] = Field(default_factory=dict)

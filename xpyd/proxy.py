@@ -160,7 +160,8 @@ class Proxy:
                  generator_on_p_node: bool = False,
                  registry: Optional[InstanceRegistry] = None,
                  dual_instances: Optional[dict[str, list[str]]] = None,
-                 model_schedulers: Optional[dict[str, str]] = None):
+                 model_schedulers: Optional[dict[str, str]] = None,
+                 kv_transfer_backend: str = "none"):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.prefill_cycler = itertools.cycle(prefill_instances)
@@ -170,6 +171,7 @@ class Proxy:
         self.registry = registry
         self.dual_instances = dual_instances or {}
         self.model_schedulers = model_schedulers or {}
+        self.kv_transfer_backend = kv_transfer_backend
         self._dual_rr_counters: dict[str, int] = {}
         self._dual_policies: dict[str, SchedulingPolicy] = {}
         self.custom_create_completion = custom_create_completion
@@ -342,11 +344,19 @@ class Proxy:
     def setup_routes(self) -> None:
         register_routes(self.router, self)
 
-    async def forward_request(self, url: str, data: dict, use_chunked: bool = True) -> AsyncGenerator[bytes, None]:
+    async def forward_request(
+        self,
+        url: str,
+        data: dict,
+        use_chunked: bool = True,
+        extra_headers: Optional[dict[str, str]] = None,
+    ) -> AsyncGenerator[bytes, None]:
         async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
             headers = {
                 "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
             }
+            if extra_headers:
+                headers.update(extra_headers)
             try:
                 async with session.post(url=url, json=data,
                                         headers=headers) as response:
@@ -749,6 +759,7 @@ class ProxyServer:
             registry=self.registry,
             dual_instances=dual_instances,
             model_schedulers=model_scheduler_config,
+            kv_transfer_backend=config.kv_transfer_backend,
         )
 
     def verify_model_config(self, instances: list, model: str) -> None:

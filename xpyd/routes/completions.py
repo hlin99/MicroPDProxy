@@ -7,6 +7,7 @@ import json
 import logging
 import sys
 import time
+import uuid
 from asyncio import CancelledError
 from typing import TYPE_CHECKING
 
@@ -81,12 +82,27 @@ def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[in
     return total_length, max_tokens, prompt_text
 
 
-def build_kv_prepare_request(request: dict, is_chat: bool) -> dict:
+def build_kv_prepare_request(
+    request: dict,
+    is_chat: bool,
+    kv_transfer_backend: str = "none",
+) -> dict:
     """Build the KV-prepare request with max_tokens=1."""
     kv_prepare_request = request.copy()
     kv_prepare_request["max_tokens"] = 1
     if is_chat:
         kv_prepare_request["max_completion_tokens"] = 1
+    if kv_transfer_backend == "nixl":
+        kv_prepare_request["stream"] = False
+        kv_prepare_request.pop("stream_options", None)
+        kv_prepare_request["kv_transfer_params"] = {
+            "do_remote_decode": True,
+            "do_remote_prefill": False,
+            "remote_engine_id": None,
+            "remote_block_ids": None,
+            "remote_host": None,
+            "remote_port": None,
+        }
     return kv_prepare_request
 
 
@@ -137,7 +153,18 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 _metrics_start, handler_name,
             )
 
-        kv_prepare_request = build_kv_prepare_request(request, is_chat)
+        kv_prepare_request = build_kv_prepare_request(
+            request,
+            is_chat,
+            server.kv_transfer_backend,
+        )
+        upstream_headers = None
+        if server.kv_transfer_backend == "nixl":
+            request_id = (
+                raw_request.headers.get("x-request-id")
+                or str(uuid.uuid4())
+            )
+            upstream_headers = {"X-Request-Id": request_id}
 
         _session_id = (
             raw_request.headers.get("x-session-id")
@@ -217,7 +244,9 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         value = b""
         try:
             async for chunk in server.forward_request(
-                f"http://{prefill_instance}{endpoint}", kv_prepare_request
+                f"http://{prefill_instance}{endpoint}",
+                kv_prepare_request,
+                extra_headers=upstream_headers,
             ):
                 value += chunk
         except HTTPException as http_exc:
@@ -247,6 +276,22 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         value = (
             value.strip().decode("utf-8").removesuffix("data: [DONE]").encode("utf-8")
         )
+        if server.kv_transfer_backend == "nixl":
+            try:
+                prefill_output = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Prefill response did not contain valid JSON",
+                ) from exc
+            kv_transfer_params = prefill_output.get("kv_transfer_params")
+            if not kv_transfer_params:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Prefill response did not contain kv_transfer_params",
+                )
+            request = request.copy()
+            request["kv_transfer_params"] = kv_transfer_params
 
         async def streaming_response(value):
             if value:
@@ -260,7 +305,9 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         # Actual HTTP errors surface when the generator is iterated inside
         # wrapped_generator(), where they are caught and handled.
         generator_d_raw = server.forward_request(
-            f"http://{decode_instance}{endpoint}", request
+            f"http://{decode_instance}{endpoint}",
+            request,
+            extra_headers=upstream_headers,
         )
         decode_tracker = FirstTokenTracker(generator_d_raw)
         generator_d = decode_tracker

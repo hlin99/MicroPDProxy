@@ -20,6 +20,16 @@ class TestProxyConfigValidation:
         assert cfg.prefill == []
         assert cfg.decode == ["10.0.0.1:8000"]
         assert cfg.port == 8000
+        assert cfg.kv_transfer_backend == "none"
+
+    def test_nixl_kv_transfer_backend(self):
+        cfg = ProxyConfig(
+            model="m",
+            prefill=["10.0.0.1:8001"],
+            decode=["10.0.0.2:8002"],
+            kv_transfer_backend="nixl",
+        )
+        assert cfg.kv_transfer_backend == "nixl"
 
     def test_valid_full(self):
         cfg = ProxyConfig(
