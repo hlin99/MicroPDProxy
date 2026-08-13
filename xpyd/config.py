@@ -61,6 +61,8 @@ class ZmqReceiverConfig(BaseModel):
     host: str
     init_ports: List[int]
     alloc_ports: List[int]
+    skip_last_n_tokens: Literal[0, 1] = 1
+    discard_partial_chunks: bool = False
 
     @model_validator(mode="after")
     def _matching_ports(self) -> "ZmqReceiverConfig":
@@ -183,6 +185,20 @@ class ProxyConfig(BaseModel):
                     "zmq.receivers is missing decode instances: "
                     f"{sorted(missing)}"
                 )
+            if self.first_token_source == "prefill":
+                incompatible = [
+                    address
+                    for address, receiver in self.zmq.receivers.items()
+                    if receiver.skip_last_n_tokens != 1
+                    or receiver.discard_partial_chunks
+                ]
+                if incompatible:
+                    raise ValueError(
+                        "ZMQ P-first LMCache receivers require "
+                        "skip_last_n_tokens=1 and "
+                        "discard_partial_chunks=false; incompatible receivers: "
+                        f"{sorted(incompatible)}"
+                    )
         return self
 
     # ------------------------------------------------------------------

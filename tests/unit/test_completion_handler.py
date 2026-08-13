@@ -1,15 +1,22 @@
 """Unit tests for the unified completion handler helpers."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.responses import JSONResponse
 
 from xpyd.routes.completions import (
+    _chat_completion_nonstream,
+    _chat_completion_stream,
+    _zmq_nonstream_generator,
+    _zmq_stream_generator,
     build_kv_prepare_request,
+    build_zmq_decode_request,
     build_zmq_prepare_request,
     extract_prompt_info,
     handle_completion,
+    tokenize_zmq_prompt,
     validate_completion_request,
 )
 
@@ -294,6 +301,213 @@ class TestBuildZmqPrepareRequest:
         assert result["max_tokens"] == 1
         assert result["stream"] is False
 
+    def test_chat_becomes_completion_request(self, receiver):
+        result = build_zmq_prepare_request(
+            {
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_completion_tokens": 10,
+                "stream_options": {"include_usage": True},
+            },
+            [1, 2, 3],
+            "request-1",
+            receiver,
+            "decode",
+            is_chat=True,
+        )
+
+        assert "messages" not in result
+        assert "max_completion_tokens" not in result
+        assert "stream_options" not in result
+        assert result["prompt"] == [1, 2, 3]
+
+
+class TestZmqChatHelpers:
+    def test_chat_template_tokenization(self, server):
+        server.tokenizer.apply_chat_template.return_value = {
+            "input_ids": [1, 2, 3],
+            "attention_mask": [1, 1, 1],
+        }
+        request = {
+            "messages": [{"role": "user", "content": "hi"}],
+            "chat_template": "custom",
+            "chat_template_kwargs": {"foo": "bar"},
+            "tools": [{"type": "function"}],
+        }
+
+        assert tokenize_zmq_prompt(request, True, server) == [1, 2, 3]
+        server.tokenizer.apply_chat_template.assert_called_once_with(
+            request["messages"],
+            foo="bar",
+            tokenize=True,
+            add_generation_prompt=True,
+            chat_template="custom",
+            tools=request["tools"],
+        )
+
+    def test_continue_final_message_disables_generation_prompt(self, server):
+        server.tokenizer.apply_chat_template.return_value = [1, 2, 3]
+        request = {
+            "messages": [{"role": "assistant", "content": "partial"}],
+            "continue_final_message": True,
+        }
+
+        tokenize_zmq_prompt(request, True, server)
+
+        server.tokenizer.apply_chat_template.assert_called_once_with(
+            request["messages"],
+            tokenize=True,
+            add_generation_prompt=False,
+            continue_final_message=True,
+        )
+
+    def test_chat_template_single_batch_is_unwrapped(self, server):
+        server.tokenizer.apply_chat_template.return_value = {
+            "input_ids": [[1, 2, 3]],
+        }
+
+        result = tokenize_zmq_prompt(
+            {"messages": [{"role": "user", "content": "hi"}]},
+            True,
+            server,
+        )
+
+        assert result == [1, 2, 3]
+
+    @pytest.mark.parametrize(
+        ("first_token", "expected_prompt", "expected_max"),
+        [(None, [1, 2, 3], 4), (9, [1, 2, 3, 9], 3)],
+    )
+    def test_decode_request(self, first_token, expected_prompt, expected_max):
+        result = build_zmq_decode_request(
+            {
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_completion_tokens": 4,
+                "max_tokens": 4,
+                "stream": True,
+            },
+            [1, 2, 3],
+            first_token,
+            4,
+            is_chat=True,
+        )
+
+        assert result["prompt"] == expected_prompt
+        assert result["max_tokens"] == expected_max
+        assert "messages" not in result
+        assert "max_completion_tokens" not in result
+
+    @pytest.mark.asyncio
+    async def test_stream_conversion_handles_split_sse_chunks(self):
+        async def source():
+            yield b'data: {"id":"cmpl","object":"text_completion","choices":['
+            yield (
+                b'{"index":0,"text":"hello","finish_reason":null}]}\n\n'
+                b"data: [DONE]\n\n"
+            )
+
+        chunks = [chunk async for chunk in _chat_completion_stream(source())]
+        first = json.loads(chunks[0].decode().removeprefix("data: "))
+        assert first["object"] == "chat.completion.chunk"
+        assert first["choices"][0]["delta"] == {
+            "content": "hello",
+            "role": "assistant",
+        }
+        assert chunks[1] == b"data: [DONE]\n\n"
+
+    @pytest.mark.asyncio
+    async def test_nonstream_conversion(self):
+        async def source():
+            yield json.dumps({
+                "id": "cmpl",
+                "object": "text_completion",
+                "choices": [{"index": 0, "text": "hello", "finish_reason": "stop"}],
+            }).encode()
+
+        chunks = [chunk async for chunk in _chat_completion_nonstream(source())]
+        output = json.loads(chunks[0])
+        assert output["object"] == "chat.completion"
+        assert output["choices"][0]["message"] == {
+            "role": "assistant",
+            "content": "hello",
+        }
+
+    @pytest.mark.asyncio
+    async def test_prefill_first_nonstream_merges_chat_and_usage(self, server):
+        async def decode():
+            yield json.dumps({
+                "id": "cmpl-d",
+                "object": "text_completion",
+                "choices": [{"index": 0, "text": "B", "finish_reason": "stop"}],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 1,
+                    "total_tokens": 5,
+                },
+            }).encode()
+
+        prefill = {
+            "id": "cmpl-p",
+            "created": 1,
+            "model": "model",
+            "choices": [{"text": "A"}],
+        }
+        chunks = [
+            chunk
+            async for chunk in _zmq_nonstream_generator(
+                prefill, decode(), server, "p", "d", 3, is_chat=True
+            )
+        ]
+        output = json.loads(chunks[0])
+        assert output["choices"][0]["message"]["content"] == "AB"
+        assert output["usage"] == {
+            "prompt_tokens": 3,
+            "completion_tokens": 2,
+            "total_tokens": 5,
+        }
+
+    @pytest.mark.asyncio
+    async def test_prefill_first_stream_has_chat_shape(self, server):
+        async def decode():
+            yield (
+                b'data: {"id":"cmpl-d","created":2,"model":"model",'
+                b'"choices":[{"index":0,"text":"B","finish_reason":null}]}\n\n'
+            )
+            yield (
+                b'data: {"id":"cmpl-d","created":2,"model":"model",'
+                b'"choices":[],"usage":{"prompt_tokens":4,'
+                b'"completion_tokens":1,"total_tokens":5}}\n\n'
+            )
+            yield b"data: [DONE]\n\n"
+
+        prefill = {
+            "id": "cmpl-p",
+            "created": 1,
+            "model": "model",
+            "choices": [{"text": "A"}],
+        }
+        chunks = [
+            chunk
+            async for chunk in _zmq_stream_generator(
+                prefill, decode(), server, "p", "d", 3, is_chat=True
+            )
+        ]
+        head = json.loads(chunks[0].decode().removeprefix("data: "))
+        body = json.loads(chunks[1].decode().removeprefix("data: "))
+        assert head["choices"][0]["delta"] == {
+            "content": "A",
+            "role": "assistant",
+        }
+        assert body["id"] == "cmpl-p"
+        assert body["object"] == "chat.completion.chunk"
+        assert body["choices"][0]["delta"] == {"content": "B"}
+        usage = json.loads(chunks[2].decode().removeprefix("data: "))
+        assert usage["choices"] == []
+        assert usage["usage"] == {
+            "prompt_tokens": 3,
+            "completion_tokens": 2,
+            "total_tokens": 5,
+        }
+
 
 class TestHandleCompletion:
     """Integration-level tests for handle_completion."""
@@ -354,3 +568,152 @@ class TestHandleCompletion:
         assert isinstance(result, JSONResponse)
         assert result.status_code == 503
         server.exception_handler.assert_called_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("source", ["decode", "prefill"])
+    @pytest.mark.parametrize("stream", [False, True])
+    @pytest.mark.parametrize("max_tokens", [1, 2])
+    async def test_zmq_chat_completion_modes(
+        self, server, source, stream, max_tokens
+    ):
+        from xpyd.proxy import D_first_token_generator
+
+        request = {
+            "model": "model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_completion_tokens": max_tokens,
+            "stream": stream,
+        }
+        raw_request = AsyncMock()
+        raw_request.json = AsyncMock(return_value=request)
+        raw_request.headers = {}
+        raw_request.client = None
+
+        receiver = MagicMock(host="receiver")
+        receiver.init_ports = [7300]
+        receiver.alloc_ports = [7400]
+        server.pd_mode = "zmq"
+        server.first_token_source = source
+        server.kv_transfer_backend = "none"
+        server.tokenizer.apply_chat_template.return_value = {
+            "input_ids": [1, 2, 3],
+            "attention_mask": [1, 1, 1],
+        }
+        server.schedule = MagicMock(
+            side_effect=["prefill:8000", "decode:8000"]
+        )
+        server.prefill_cycler = MagicMock()
+        server.decode_cycler = MagicMock()
+        server.zmq_config.receivers = {"decode:8000": receiver}
+        server.zmq_notifications.register = AsyncMock()
+        server.zmq_notifications.wait = AsyncMock()
+        server.exception_handler = MagicMock()
+        server._record_failure = MagicMock()
+        server.registry = None
+        server.generator = D_first_token_generator
+        server.d_first_token_generator_class = D_first_token_generator
+        forwarded = []
+
+        async def forward(url, data, **kwargs):
+            forwarded.append((url, data.copy()))
+            if "prefill" in url:
+                yield json.dumps({
+                    "id": "cmpl-p",
+                    "created": 1,
+                    "model": "model",
+                    "choices": [{"index": 0, "text": "A"}],
+                    "usage": {
+                        "prompt_tokens": 3,
+                        "completion_tokens": 1,
+                        "total_tokens": 4,
+                    },
+                    "kv_transfer_params": {"first_tok": 9},
+                }).encode()
+            elif stream:
+                yield (
+                    b'data: {"id":"cmpl-d","created":2,"model":"model",'
+                    b'"choices":[{"index":0,"text":"B",'
+                    b'"finish_reason":null}]}\n\n'
+                )
+                yield b"data: [DONE]\n\n"
+            else:
+                yield json.dumps({
+                    "id": "cmpl-d",
+                    "object": "text_completion",
+                    "created": 2,
+                    "model": "model",
+                    "choices": [{
+                        "index": 0,
+                        "text": "B",
+                        "finish_reason": "stop",
+                    }],
+                    "usage": {
+                        "prompt_tokens": 4 if source == "prefill" else 3,
+                        "completion_tokens": (
+                            1 if source == "prefill" else max_tokens
+                        ),
+                        "total_tokens": (
+                            5 if source == "prefill" else 3 + max_tokens
+                        ),
+                    },
+                }).encode()
+
+        server.forward_request = forward
+        with (
+            patch("xpyd.routes.completions.track_request_start", return_value=0),
+            patch("xpyd.routes.completions.track_request_end"),
+            patch("xpyd.routes.completions.record_pd_metrics"),
+        ):
+            response = await handle_completion(
+                "/v1/chat/completions", raw_request, server, is_chat=True
+            )
+            body = b"".join([chunk async for chunk in response.body_iterator])
+
+        expected_urls = ["http://prefill:8000/v1/completions"] + (
+            ["http://decode:8000/v1/completions"]
+            if source == "decode" or max_tokens > 1
+            else []
+        )
+        assert [call[0] for call in forwarded] == expected_urls
+        assert server.schedule.call_count == 2
+        assert "messages" not in forwarded[0][1]
+        assert forwarded[0][1]["prompt"] == [1, 2, 3]
+        if len(forwarded) == 2:
+            assert "messages" not in forwarded[1][1]
+            expected_prompt = (
+                [1, 2, 3, 9] if source == "prefill" else [1, 2, 3]
+            )
+            assert forwarded[1][1]["prompt"] == expected_prompt
+            expected_max = max_tokens - 1 if source == "prefill" else max_tokens
+            assert forwarded[1][1]["max_tokens"] == expected_max
+
+        if stream:
+            events = [
+                json.loads(event.removeprefix("data: "))
+                for event in body.decode().split("\n\n")
+                if event and event != "data: [DONE]"
+            ]
+            assert all(event["object"] == "chat.completion.chunk" for event in events)
+            content = "".join(
+                event["choices"][0]["delta"].get("content", "")
+                for event in events
+                if event["choices"]
+            )
+        else:
+            output = json.loads(body)
+            assert output["object"] == "chat.completion"
+            content = output["choices"][0]["message"]["content"]
+            if source == "prefill" and max_tokens > 1:
+                assert output["usage"] == {
+                    "prompt_tokens": 3,
+                    "completion_tokens": 2,
+                    "total_tokens": 5,
+                }
+            elif source == "decode":
+                assert output["usage"]["completion_tokens"] == max_tokens
+        expected_content = (
+            "A"
+            if source == "prefill" and max_tokens == 1
+            else "AB" if source == "prefill" else "B"
+        )
+        assert content == expected_content

@@ -218,6 +218,83 @@ class TestProxyConfigFromYaml:
         )
         assert cfg.first_token_source == source
 
+    def test_zmq_p_first_receiver_alignment(self):
+        cfg = ProxyConfig(
+            model="m",
+            prefill=["10.0.0.1:8001"],
+            decode=["10.0.0.2:8002"],
+            pd_mode="zmq",
+            first_token_source="prefill",
+            zmq={
+                "receivers": {
+                    "10.0.0.2:8002": {
+                        "host": "10.0.0.2",
+                        "init_ports": [7300],
+                        "alloc_ports": [7400],
+                        "skip_last_n_tokens": 1,
+                        "discard_partial_chunks": False,
+                    },
+                },
+            },
+        )
+        receiver = cfg.zmq.receivers["10.0.0.2:8002"]
+        assert receiver.skip_last_n_tokens == 1
+        assert receiver.discard_partial_chunks is False
+
+    @pytest.mark.parametrize(
+        ("skip_last_n_tokens", "discard_partial_chunks"),
+        [
+            (0, False),
+            (1, True),
+        ],
+    )
+    def test_zmq_p_first_receiver_alignment_mismatch_rejected(
+        self, skip_last_n_tokens, discard_partial_chunks
+    ):
+        with pytest.raises(
+            ValueError,
+            match="skip_last_n_tokens|discard_partial_chunks",
+        ):
+            ProxyConfig(
+                model="m",
+                prefill=["10.0.0.1:8001"],
+                decode=["10.0.0.2:8002"],
+                pd_mode="zmq",
+                first_token_source="prefill",
+                zmq={
+                    "receivers": {
+                        "10.0.0.2:8002": {
+                            "host": "10.0.0.2",
+                            "init_ports": [7300],
+                            "alloc_ports": [7400],
+                            "skip_last_n_tokens": skip_last_n_tokens,
+                            "discard_partial_chunks": discard_partial_chunks,
+                        },
+                    },
+                },
+            )
+
+    def test_zmq_d_first_receiver_alignment_is_not_required(self):
+        cfg = ProxyConfig(
+            model="m",
+            prefill=["10.0.0.1:8001"],
+            decode=["10.0.0.2:8002"],
+            pd_mode="zmq",
+            first_token_source="decode",
+            zmq={
+                "receivers": {
+                    "10.0.0.2:8002": {
+                        "host": "10.0.0.2",
+                        "init_ports": [7300],
+                        "alloc_ports": [7400],
+                        "skip_last_n_tokens": 0,
+                        "discard_partial_chunks": True,
+                    },
+                },
+            },
+        )
+        assert cfg.first_token_source == "decode"
+
     def test_from_yaml_file_not_found(self):
         with pytest.raises(FileNotFoundError):
             ProxyConfig.from_yaml("/nonexistent/path.yaml")

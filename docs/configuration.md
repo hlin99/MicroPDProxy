@@ -75,6 +75,18 @@ startup:
 | `startup.wait_timeout_seconds` | integer | no | `600` | Maximum time (seconds) to wait for at least 1 prefill + 1 decode node during startup. |
 | `startup.probe_interval_seconds` | integer | no | `10` | Interval (seconds) between health probes during startup discovery. |
 
+### ZMQ receiver token alignment
+
+P-first requires `skip_last_n_tokens: 1` and
+`discard_partial_chunks: false` on every `zmq.receivers` entry and in the
+decoder's LMCache `kv_connector_extra_config`.
+
+ZMQ D-first always sends the request through the selected prefill and waits
+for its matching `ProxyNotif` before forwarding to the selected decoder. The
+prefill HTTP response is not a transfer-completion barrier: LMCache submits
+`batched_put` asynchronously, while `ProxyNotif` is only emitted after a
+successful last-prefill write.
+
 ## Topology Expansion
 
 The proxy expands node lists into individual instance addresses using the
