@@ -380,13 +380,21 @@ class Proxy:
 
     async def get_from_instance(self, path: str, is_full_instancelist: int = 0) -> JSONResponse:
         """Fetch data from backend instance(s) via GET."""
-        if not self.prefill_instances:
+        dual_instances = [
+            instance
+            for model_instances in self.dual_instances.values()
+            for instance in model_instances
+        ]
+        instances = (
+            self.prefill_instances
+            + self.decode_instances
+            + dual_instances
+        )
+        if not instances:
             return error_response("No instances available", SERVER_ERROR, 500)
 
         if is_full_instancelist == 0:
-            instances = [self.prefill_instances[0]]
-        else:
-            instances = self.prefill_instances + self.decode_instances
+            instances = instances[:1]
 
         results = {}
         async with aiohttp.ClientSession() as session:
