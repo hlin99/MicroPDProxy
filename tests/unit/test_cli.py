@@ -89,10 +89,10 @@ class TestSubcommandParser:
         args = parser.parse_args(["proxy", "-c", "x.yaml", "--log-level", "debug"])
         assert args.log_level == "debug"
 
-    def test_pd_mode_override(self):
+    def test_disaggregated_mode_override(self):
         parser = _build_parser()
-        args = parser.parse_args(["proxy", "-c", "x.yaml", "--pd-mode", "zmq"])
-        assert args.pd_mode == "zmq"
+        args = parser.parse_args(["proxy", "-c", "x.yaml", "--disaggregated-mode", "zmq"])
+        assert args.disaggregated_mode == "zmq"
 
     def test_first_token_source_override(self):
         parser = _build_parser()

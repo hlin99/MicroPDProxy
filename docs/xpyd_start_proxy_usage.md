@@ -4,7 +4,7 @@ This document describes how to use `core/xpyd_start_proxy.sh` after task-two par
 
 ## Purpose
 
-`xpyd_start_proxy.sh` generates the prefill/decode topology for the proxy and starts `MicroPDProxyServer.py` with the expanded instance endpoints.
+`xpyd_start_proxy.sh` generates the prefill/decode topology for the proxy and starts `MicroDisaggregatedProxyServer.py` with the expanded instance endpoints.
 
 It now supports explicit command-line parameters instead of relying only on fixed topology values.
 
@@ -150,7 +150,7 @@ Different node shards belonging to the same instance use the same port internall
 
 - `model_path`
   - must be set before running the script
-  - passed through to `MicroPDProxyServer.py --model`
+  - passed through to `MicroDisaggregatedProxyServer.py --model`
 
 Example:
 
@@ -232,7 +232,7 @@ bash core/xpyd_start_proxy.sh \
 The script will print:
 
 ```text
-Running: python3 ./MicroPDProxyServer.py ...
+Running: python3 ./MicroDisaggregatedProxyServer.py ...
 ```
 
 and then exit.

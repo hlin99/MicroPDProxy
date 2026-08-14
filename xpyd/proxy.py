@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""MicroPDProxyServer.
+"""MicroDisaggregatedProxyServer.
 
 The proxy routes incoming OpenAI-compatible requests through two phases:
 
@@ -159,9 +159,9 @@ class Proxy:
                      [Request], StreamingResponse]] = None,
                  first_token_source: str = "decode",
                  registry: Optional[InstanceRegistry] = None,
-                 dual_instances: Optional[dict[str, list[str]]] = None,
+                 aggregated_instances: Optional[dict[str, list[str]]] = None,
                  model_schedulers: Optional[dict[str, str]] = None,
-                 pd_mode: str = "direct",
+                 disaggregated_mode: str = "direct",
                  zmq_config=None):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -170,15 +170,15 @@ class Proxy:
         self.model = model
         self.scheduling_policy = scheduling_policy
         self.registry = registry
-        self.dual_instances = dual_instances or {}
+        self.aggregated_instances = aggregated_instances or {}
         self.model_schedulers = model_schedulers or {}
-        self.pd_mode = pd_mode
+        self.disaggregated_mode = disaggregated_mode
         self.first_token_source = first_token_source
-        self.kv_transfer_backend = "nixl" if pd_mode == "nixl" else "none"
+        self.kv_transfer_backend = "nixl" if disaggregated_mode == "nixl" else "none"
         self.zmq_config = zmq_config
         self.zmq_notifications = None
-        self._dual_rr_counters: dict[str, int] = {}
-        self._dual_policies: dict[str, SchedulingPolicy] = {}
+        self._aggregated_rr_counters: dict[str, int] = {}
+        self._aggregated_policies: dict[str, SchedulingPolicy] = {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
         self.router = APIRouter()
@@ -191,12 +191,12 @@ class Proxy:
         self.d_first_token_generator_class = D_first_token_generator
         self.tokenizer = AutoTokenizer.from_pretrained(model)
 
-    def _is_dual_model(self, model: str) -> bool:
-        """Check if all instances for a model are dual-role."""
-        return model in self.dual_instances and len(self.dual_instances[model]) > 0
+    def _is_aggregated_model(self, model: str) -> bool:
+        """Check if all instances for a model are aggregated-role."""
+        return model in self.aggregated_instances and len(self.aggregated_instances[model]) > 0
 
-    def schedule_dual(self, model: str, **kwargs) -> Optional[str]:
-        """Schedule a dual instance for the given model.
+    def schedule_aggregated(self, model: str, **kwargs) -> Optional[str]:
+        """Schedule a aggregated instance for the given model.
 
         Scheduling strategy follows the per-model fallback chain:
         model-level scheduler → global scheduling_policy → round-robin.
@@ -204,15 +204,15 @@ class Proxy:
         Supports load-balanced, round-robin, consistent-hash, power-of-two,
         and cache-aware selection.
         """
-        if model not in self.dual_instances:
+        if model not in self.aggregated_instances:
             return None
-        instances = self.dual_instances[model]
+        instances = self.aggregated_instances[model]
         if not instances:
             return None
 
         # Determine available instances
         if self.registry is not None:
-            available = self.registry.get_dual_instances(model=model)
+            available = self.registry.get_aggregated_instances(model=model)
             if not available:
                 return None
         else:
@@ -244,11 +244,11 @@ class Proxy:
 
         # Load-balanced: pick instance with lowest active requests
         if strategy == "loadbalanced":
-            selected = self._schedule_dual_load_balanced(available)
+            selected = self._schedule_aggregated_load_balanced(available)
         elif strategy == "consistent_hash":
             policy = cast(
                 ConsistentHashPolicy,
-                self._get_dual_policy(model, strategy, instances),
+                self._get_aggregated_policy(model, strategy, instances),
             )
             selected = policy.select_from(
                 set(available),
@@ -260,7 +260,7 @@ class Proxy:
         elif strategy == "power_of_two":
             policy = cast(
                 PowerOfTwoPolicy,
-                self._get_dual_policy(model, strategy, instances),
+                self._get_aggregated_policy(model, strategy, instances),
             )
             loads = (
                 {
@@ -274,17 +274,17 @@ class Proxy:
         elif strategy == "cache_aware":
             policy = cast(
                 CacheAwarePolicy,
-                self._get_dual_policy(model, strategy, instances),
+                self._get_aggregated_policy(model, strategy, instances),
             )
             selected = policy.select_from(
                 set(available),
                 prompt=kwargs.get("prompt"),
             )
         else:
-            # No lock needed: schedule_dual is called from async handlers
+            # No lock needed: schedule_aggregated is called from async handlers
             # in the single-threaded event loop; no concurrent mutation.
-            idx = self._dual_rr_counters.get(model, 0) % len(available)
-            self._dual_rr_counters[model] = idx + 1
+            idx = self._aggregated_rr_counters.get(model, 0) % len(available)
+            self._aggregated_rr_counters[model] = idx + 1
             selected = available[idx]
 
         if selected is None:
@@ -293,14 +293,14 @@ class Proxy:
             self.registry.increment_active_requests(selected)
         return selected
 
-    def _get_dual_policy(
+    def _get_aggregated_policy(
         self,
         model: str,
         strategy: str,
         instances: list[str],
     ) -> SchedulingPolicy:
-        """Return the cached advanced scheduling policy for a dual model."""
-        policy = self._dual_policies.get(model)
+        """Return the cached advanced scheduling policy for a aggregated model."""
+        policy = self._aggregated_policies.get(model)
         if policy is not None:
             return policy
 
@@ -311,11 +311,11 @@ class Proxy:
         if strategy == "cache_aware":
             options["tokenizer"] = self.tokenizer
         policy = default_registry.create(strategy, **options)
-        self._dual_policies[model] = policy
+        self._aggregated_policies[model] = policy
         return policy
 
-    def _schedule_dual_load_balanced(self, available: list[str]) -> str:
-        """Pick the dual instance with the lowest active request count."""
+    def _schedule_aggregated_load_balanced(self, available: list[str]) -> str:
+        """Pick the aggregated instance with the lowest active request count."""
         if self.registry is None or len(available) == 1:
             return available[0]
         best = available[0]
@@ -327,16 +327,16 @@ class Proxy:
                 best_load = load
         return best
 
-    def schedule_dual_completion(
+    def schedule_aggregated_completion(
         self,
         instance: str,
         req_len: Optional[int] = None,
     ) -> None:
-        """Load accounting for dual instance completion.
+        """Load accounting for aggregated instance completion.
 
-        Dual instances are not in the P/D scheduler's instance lists, so
+        Aggregated instances are not in the disaggregated scheduler's instance lists, so
         we track load separately via registry active request counts rather
-        than delegating to the P/D scheduler path.
+        than delegating to the disaggregated scheduler path.
         """
         if self.registry is not None:
             self.registry.decrement_active_requests(instance)
@@ -464,15 +464,15 @@ class Proxy:
 
     async def get_from_instance(self, path: str, is_full_instancelist: int = 0) -> JSONResponse:
         """Fetch data from backend instance(s) via GET."""
-        dual_instances = [
+        aggregated_instances = [
             instance
-            for model_instances in self.dual_instances.values()
+            for model_instances in self.aggregated_instances.values()
             for instance in model_instances
         ]
         instances = (
             self.prefill_instances
             + self.decode_instances
-            + dual_instances
+            + aggregated_instances
         )
         if not instances:
             return error_response("No instances available", SERVER_ERROR, 500)
@@ -644,8 +644,8 @@ class ProxyServer:
         )
         _registered_prefill: set[str] = set()
         _registered_decode: set[str] = set()
-        _registered_dual: set[str] = set()
-        dual_instances: dict[str, list[str]] = {}
+        _registered_aggregated: set[str] = set()
+        aggregated_instances: dict[str, list[str]] = {}
 
         if config.instances is not None:
             # Multi-model: register from instances list
@@ -671,17 +671,17 @@ class ProxyServer:
                         continue
                     self.registry.add("decode", addr, model=entry.model)
                     _registered_decode.add(addr)
-                elif entry.role == "dual":
-                    if addr in _registered_dual:
+                elif entry.role == "aggregated":
+                    if addr in _registered_aggregated:
                         logger.warning(
-                            "Duplicate dual address %s (model=%s) — "
+                            "Duplicate aggregated address %s (model=%s) — "
                             "only the first registration is kept",
                             addr, entry.model,
                         )
                         continue
-                    self.registry.add("dual", addr, model=entry.model)
-                    _registered_dual.add(addr)
-                    dual_instances.setdefault(entry.model, []).append(addr)
+                    self.registry.add("aggregated", addr, model=entry.model)
+                    _registered_aggregated.add(addr)
+                    aggregated_instances.setdefault(entry.model, []).append(addr)
             # Derive de-duplicated prefill/decode lists for scheduler compat
             seen_p: set[str] = set()
             seen_d: set[str] = set()
@@ -710,14 +710,14 @@ class ProxyServer:
 
         self._all_prefill = all_prefill
         self._all_decode = all_decode
-        self._all_dual = [a for addrs in dual_instances.values() for a in addrs]
-        _registered = _registered_prefill | _registered_decode | _registered_dual
+        self._all_aggregated = [a for addrs in aggregated_instances.values() for a in addrs]
+        _registered = _registered_prefill | _registered_decode | _registered_aggregated
 
         # Create health monitor if enabled
         self.health_monitor = None
         hc_cfg = config.health_check
         if hc_cfg.enabled:
-            all_instances = all_prefill + all_decode + self._all_dual
+            all_instances = all_prefill + all_decode + self._all_aggregated
             self.health_monitor = HealthMonitor(
                 nodes=all_instances,
                 interval_seconds=hc_cfg.interval_seconds,
@@ -732,7 +732,7 @@ class ProxyServer:
                 self.registry.mark_healthy(addr)
 
         # Build per-model scheduler config from models shorthand.
-        # Stores strategy *names* (not instances) — schedule_dual()
+        # Stores strategy *names* (not instances) — schedule_aggregated()
         # interprets the strategy at scheduling time.
         # Fallback chain: model-level → global → load_balanced (default).
         model_scheduler_config = getattr(config, '_model_schedulers', {})
@@ -765,9 +765,9 @@ class ProxyServer:
             custom_create_chat_completion=create_chat_completion,
             first_token_source=config.first_token_source,
             registry=self.registry,
-            dual_instances=dual_instances,
+            aggregated_instances=aggregated_instances,
             model_schedulers=model_scheduler_config,
-            pd_mode=config.pd_mode,
+            disaggregated_mode=config.disaggregated_mode,
             zmq_config=config.zmq,
         )
 
@@ -794,7 +794,7 @@ class ProxyServer:
             probe_interval=self.config.probe_interval_seconds,
             wait_timeout=self.config.wait_timeout_seconds,
             registry=self.registry,
-            dual_instances=self._all_dual,
+            aggregated_instances=self._all_aggregated,
         )
 
         app = FastAPI()
@@ -818,7 +818,7 @@ class ProxyServer:
 
         @app.on_event("startup")
         async def _start_discovery():
-            if self.config.pd_mode == "zmq":
+            if self.config.disaggregated_mode == "zmq":
                 from xpyd.zmq_notifications import ZmqNotificationListener
 
                 zmq_config = self.config.zmq
@@ -848,7 +848,7 @@ class ProxyServer:
             result: dict[str, list] = {
                 "prefill_instances": [],
                 "decode_instances": [],
-                "dual_instances": [],
+                "aggregated_instances": [],
             }
             for info in self.registry.get_all_instances():
                 result[f"{info.role}_instances"].append({
@@ -877,7 +877,7 @@ def _build_parser():
     """Build the subcommand argument parser for the proxy CLI."""
     parser = argparse.ArgumentParser(
         prog="xpyd",
-        description="xPyD — lightweight PD proxy server",
+        description="xPyD — lightweight disaggregated proxy server",
     )
     parser.add_argument(
         "--version", "-V", action="version", version=f"%(prog)s {_VERSION}",
@@ -911,8 +911,8 @@ def _build_parser():
         help="Override log level: debug|info|warning|error",
     )
     proxy_parser.add_argument(
-        "--pd-mode", choices=("direct", "nixl", "zmq"), default=None,
-        help="PD transfer mode (default: config value or direct)",
+        "--disaggregated-mode", choices=("direct", "nixl", "zmq"), default=None,
+        help="disaggregated transfer mode (default: config value or direct)",
     )
     proxy_parser.add_argument(
         "--first-token-source", choices=("prefill", "decode"), default=None,
@@ -1008,8 +1008,8 @@ def main() -> None:
             config = config.model_copy(update={"port": args.port})
         if args.log_level is not None:
             config = config.model_copy(update={"log_level": args.log_level})
-        if args.pd_mode is not None:
-            config = config.model_copy(update={"pd_mode": args.pd_mode})
+        if args.disaggregated_mode is not None:
+            config = config.model_copy(update={"disaggregated_mode": args.disaggregated_mode})
         if args.first_token_source is not None:
             config = config.model_copy(
                 update={"first_token_source": args.first_token_source}

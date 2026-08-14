@@ -1,6 +1,6 @@
 # API Reference
 
-MicroPDProxy exposes an OpenAI-compatible API surface. All endpoints are served
+MicroDisaggregatedProxy exposes an OpenAI-compatible API surface. All endpoints are served
 by the proxy process (default port `8868`).
 
 ## Authentication

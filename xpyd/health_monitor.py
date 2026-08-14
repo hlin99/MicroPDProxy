@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Background health monitor for MicroPDProxy backend nodes.
+"""Background health monitor for MicroDisaggregatedProxy backend nodes.
 
 Periodically probes each configured node's ``/health`` endpoint and
 invokes callbacks to report status changes.  Designed to integrate

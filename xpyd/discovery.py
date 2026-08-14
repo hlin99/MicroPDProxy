@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Startup node discovery for MicroPDProxy.
+"""Startup node discovery for MicroDisaggregatedProxy.
 
 Probes configured prefill/decode nodes in the background and tracks
 which ones are healthy. The proxy returns 503 until at least one
@@ -41,27 +41,27 @@ class NodeDiscovery:
         probe_interval: float = 10.0,
         wait_timeout: float = 600.0,
         registry: Optional["InstanceRegistry"] = None,
-        dual_instances: Optional[List[str]] = None,
+        aggregated_instances: Optional[List[str]] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
-        self.dual_instances = dual_instances or []
+        self.aggregated_instances = aggregated_instances or []
         self.probe_interval = probe_interval
         self.wait_timeout = wait_timeout
         self.registry = registry
 
         self.healthy_prefill: Set[str] = set()
         self.healthy_decode: Set[str] = set()
-        self.healthy_dual: Set[str] = set()
+        self.healthy_aggregated: Set[str] = set()
         self._ready = asyncio.Event()
         self._task: asyncio.Task | None = None
 
     @property
     def is_ready(self) -> bool:
-        """True when at least 1 prefill + 1 decode node are healthy, or at least 1 dual node is healthy."""
-        has_pd = len(self.healthy_prefill) >= 1 and len(self.healthy_decode) >= 1
-        has_dual = len(self.healthy_dual) >= 1
-        return has_pd or has_dual
+        """True when at least 1 prefill + 1 decode node are healthy, or at least 1 aggregated node is healthy."""
+        has_disaggregated = len(self.healthy_prefill) >= 1 and len(self.healthy_decode) >= 1
+        has_aggregated = len(self.healthy_aggregated) >= 1
+        return has_disaggregated or has_aggregated
 
     async def start(self):
         """Start the background probe loop."""
@@ -110,10 +110,10 @@ class NodeDiscovery:
                 if self.is_ready and not self._ready.is_set():
                     self._ready.set()
                     logger.info(
-                        "Proxy ready: %d prefill, %d decode, %d dual nodes available",
+                        "Proxy ready: %d prefill, %d decode, %d aggregated nodes available",
                         len(self.healthy_prefill),
                         len(self.healthy_decode),
-                        len(self.healthy_dual),
+                        len(self.healthy_aggregated),
                     )
 
                 elapsed = time.monotonic() - start_time
@@ -122,20 +122,20 @@ class NodeDiscovery:
                         "Timeout waiting for backend nodes after %.0fs", elapsed
                     )
                     raise DiscoveryTimeout(
-                        f"No minimum nodes (1P+1D or 1 dual) after {elapsed:.0f}s"
+                        f"No minimum nodes (1P+1D or 1 aggregated) after {elapsed:.0f}s"
                     )
 
                 await asyncio.sleep(self.probe_interval)
 
     async def _probe_all(self, session: aiohttp.ClientSession):
-        """Probe all prefill, decode, and dual nodes once."""
+        """Probe all prefill, decode, and aggregated nodes once."""
         tasks = []
         for inst in self.prefill_instances:
             tasks.append(self._probe_node(session, inst, "prefill"))
         for inst in self.decode_instances:
             tasks.append(self._probe_node(session, inst, "decode"))
-        for inst in self.dual_instances:
-            tasks.append(self._probe_node(session, inst, "dual"))
+        for inst in self.aggregated_instances:
+            tasks.append(self._probe_node(session, inst, "aggregated"))
         await asyncio.gather(*tasks)
 
     async def _probe_node(
@@ -150,8 +150,8 @@ class NodeDiscovery:
             healthy_set = self.healthy_decode
             all_instances = self.decode_instances
         else:
-            healthy_set = self.healthy_dual
-            all_instances = self.dual_instances
+            healthy_set = self.healthy_aggregated
+            all_instances = self.aggregated_instances
         try:
             async with session.get(url) as resp:
                 if resp.status == 200:

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Receive LMCache PD completion notifications over ZMQ."""
+"""Receive LMCache disaggregated completion notifications over ZMQ."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-MicroPDProxy uses YAML-based configuration as the primary way to define proxy
+MicroDisaggregatedProxy uses YAML-based configuration as the primary way to define proxy
 behavior. YAML provides a structured, readable format that scales better than
 CLI arguments as the number of configuration options grows. A single YAML file
 captures the entire proxy topology — model path, node addresses, tensor/data
@@ -14,7 +14,7 @@ deployments reproducible and version-controllable.
 Below is the complete schema with every supported field.
 
 ```yaml
-# MicroPDProxy Configuration
+# MicroDisaggregatedProxy Configuration
 
 # Server
 model: /path/to/model           # required
@@ -41,7 +41,7 @@ decode:
 
 # Scheduling
 scheduling: loadbalanced        # roundrobin | loadbalanced
-first_token_source: decode       # prefill | decode; applies to every PD mode
+first_token_source: decode       # prefill | decode; applies to every disaggregated mode
 
 # Authentication
 admin_api_key: ""               # env override: ADMIN_API_KEY

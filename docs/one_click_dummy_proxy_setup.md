@@ -101,7 +101,7 @@ bash core/xpyd_start_proxy.sh \
   --decode-base-port 8200
 ```
 
-This will launch the real `MicroPDProxyServer.py` using endpoints derived from the script.
+This will launch the real `MicroDisaggregatedProxyServer.py` using endpoints derived from the script.
 
 ---
 

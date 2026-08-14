@@ -2,7 +2,7 @@
 """Per-instance circuit breaker with CLOSED / OPEN / HALF-OPEN state machine.
 
 The circuit breaker prevents sending requests to an instance that is
-consistently failing and gradually recovers when the instance comes back.
+consistently failing and graaggregatedly recovers when the instance comes back.
 
 State transitions::
 

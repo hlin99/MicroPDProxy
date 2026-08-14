@@ -45,5 +45,5 @@
 - **Always pull latest main and re-read BOT_POLICY.md before starting any work.** This is a living document. Never rely on cached copies.
 
 ## Architecture
-- Lightweight PD-disaggregated LLM serving proxy.
+- Lightweight disaggregated LLM serving proxy.
 - Follow vLLM bench CLI compatibility (see [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md)).

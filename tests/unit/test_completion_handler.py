@@ -28,7 +28,7 @@ def server():
     srv.get_total_token_length = MagicMock(
         side_effect=lambda x: len(x) if isinstance(x, str) else 0
     )
-    srv._is_dual_model = MagicMock(return_value=False)
+    srv._is_aggregated_model = MagicMock(return_value=False)
     return srv
 
 
@@ -592,7 +592,7 @@ class TestHandleCompletion:
         receiver = MagicMock(host="receiver")
         receiver.init_ports = [7300]
         receiver.alloc_ports = [7400]
-        server.pd_mode = "zmq"
+        server.disaggregated_mode = "zmq"
         server.first_token_source = source
         server.kv_transfer_backend = "none"
         server.tokenizer.apply_chat_template.return_value = {
@@ -662,7 +662,7 @@ class TestHandleCompletion:
         with (
             patch("xpyd.routes.completions.track_request_start", return_value=0),
             patch("xpyd.routes.completions.track_request_end"),
-            patch("xpyd.routes.completions.record_pd_metrics"),
+            patch("xpyd.routes.completions.record_disaggregated_metrics"),
         ):
             response = await handle_completion(
                 "/v1/chat/completions", raw_request, server, is_chat=True

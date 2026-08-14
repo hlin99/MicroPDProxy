@@ -204,16 +204,16 @@ class TestProxyConfigFromYaml:
             cfg = ProxyConfig.from_yaml(str(p))
         assert cfg.admin_api_key == "env-key"
 
-    @pytest.mark.parametrize("pd_mode", ["direct", "nixl"])
+    @pytest.mark.parametrize("disaggregated_mode", ["direct", "nixl"])
     @pytest.mark.parametrize("source", ["prefill", "decode"])
-    def test_first_token_source_supported_for_pd_modes(
-        self, pd_mode, source
+    def test_first_token_source_supported_for_disaggregated_modes(
+        self, disaggregated_mode, source
     ):
         cfg = ProxyConfig(
             model="m",
             prefill=["10.0.0.1:8001"],
             decode=["10.0.0.2:8002"],
-            pd_mode=pd_mode,
+            disaggregated_mode=disaggregated_mode,
             first_token_source=source,
         )
         assert cfg.first_token_source == source
@@ -223,7 +223,7 @@ class TestProxyConfigFromYaml:
             model="m",
             prefill=["10.0.0.1:8001"],
             decode=["10.0.0.2:8002"],
-            pd_mode="zmq",
+            disaggregated_mode="zmq",
             first_token_source="prefill",
             zmq={
                 "receivers": {
@@ -259,7 +259,7 @@ class TestProxyConfigFromYaml:
                 model="m",
                 prefill=["10.0.0.1:8001"],
                 decode=["10.0.0.2:8002"],
-                pd_mode="zmq",
+                disaggregated_mode="zmq",
                 first_token_source="prefill",
                 zmq={
                     "receivers": {
@@ -279,7 +279,7 @@ class TestProxyConfigFromYaml:
             model="m",
             prefill=["10.0.0.1:8001"],
             decode=["10.0.0.2:8002"],
-            pd_mode="zmq",
+            disaggregated_mode="zmq",
             first_token_source="decode",
             zmq={
                 "receivers": {

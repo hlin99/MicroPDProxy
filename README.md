@@ -2,11 +2,11 @@
 
 **Lightweight Prefill-Decode disaggregated proxy for LLM serving.**
 
-xPyD-proxy routes inference requests between prefill and decode nodes, enabling PD-disaggregated LLM serving with load balancing, health monitoring, and fault tolerance.
+xPyD-proxy routes inference requests between prefill and decode nodes, enabling disaggregated LLM serving with load balancing, health monitoring, and fault tolerance.
 
 ## Key Features
 
-- **PD disaggregation** — separate prefill and decode nodes for optimal resource utilization
+- **disaggregated serving** — separate prefill and decode nodes for optimal resource utilization
 - **Multiple scheduling policies** — round-robin, consistent hash, cache-aware, power-of-two
 - **Resilience** — circuit breaker, health monitoring, automatic failover
 - **Multi-model routing** — serve multiple models through a single proxy
@@ -41,7 +41,7 @@ xpyd proxy --model my-model \
 
 | Component | Description |
 |-----------|-------------|
-| **xpyd-proxy** | PD-disaggregated proxy |
+| **xpyd-proxy** | disaggregated proxy |
 | [xpyd-sim](https://github.com/xPyD-hub/xPyD-sim) | OpenAI-compatible inference simulator |
 | [xpyd-bench](https://github.com/xPyD-hub/xPyD-bench) | Benchmarking & planning tool |
 

@@ -42,13 +42,13 @@ class TestAutoFixRules:
         data = {
             "instances": [
                 {"address": "10.0.0.1:8000", "role": "Prefill", "model": "m"},
-                {"address": "10.0.0.2:8000", "role": "DUAL", "model": "m2"},
+                {"address": "10.0.0.2:8000", "role": "AGGREGATED", "model": "m2"},
             ],
         }
         fixer = ConfigFixer(data)
         fixer.run()
         assert fixer.fixed_data["instances"][0]["role"] == "prefill"
-        assert fixer.fixed_data["instances"][1]["role"] == "dual"
+        assert fixer.fixed_data["instances"][1]["role"] == "aggregated"
 
     def test_role_typo_fuzzy(self):
         data = {
@@ -96,7 +96,7 @@ class TestAutoFixRules:
             "instances": [
                 {
                     "address": "10.0.0.1:8000",
-                    "role": "dual",
+                    "role": "aggregated",
                     "model": " llama-3 ",
                 },
             ],
@@ -110,20 +110,20 @@ class TestAutoFixRules:
             "models": [
                 {
                     "name": "llama-3",
-                    "dual": ["10.0.0.1"],
+                    "aggregated": ["10.0.0.1"],
                 },
             ],
         }
         fixer = ConfigFixer(data)
         fixer.run()
-        assert fixer.fixed_data["models"][0]["dual"] == ["10.0.0.1:8000"]
+        assert fixer.fixed_data["models"][0]["aggregated"] == ["10.0.0.1:8000"]
 
     def test_models_shorthand_scheduler_typo(self):
         data = {
             "models": [
                 {
                     "name": "llama-3",
-                    "dual": ["10.0.0.1:8000"],
+                    "aggregated": ["10.0.0.1:8000"],
                     "scheduler": "round_robbin",
                 },
             ],
@@ -137,7 +137,7 @@ class TestAutoFixRules:
             "models": [
                 {
                     "name": " llama-3 ",
-                    "dual": ["10.0.0.1:8000"],
+                    "aggregated": ["10.0.0.1:8000"],
                 },
             ],
         }
@@ -174,31 +174,31 @@ class TestShortStringRejection:
 class TestSuggestions:
     """Test suggest-only rules."""
 
-    def test_dual_pd_mix(self):
+    def test_aggregated_disaggregated_mix(self):
         data = {
             "instances": [
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m"},
                 {"address": "10.0.0.2:8000", "role": "prefill", "model": "m"},
             ],
         }
         fixer = ConfigFixer(data)
         report = fixer.run()
         assert any(
-            "both dual and prefill/decode" in s.message for s in report.suggestions
+            "both aggregated and prefill/decode" in s.message for s in report.suggestions
         )
 
     def test_address_conflict(self):
         data = {
             "instances": [
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m1"},
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m2"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m1"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m2"},
             ],
         }
         fixer = ConfigFixer(data)
         report = fixer.run()
         assert any("multiple models" in s.message for s in report.suggestions)
 
-    def test_unbalanced_pd(self):
+    def test_unbalanced_disaggregated(self):
         data = {
             "instances": [
                 {"address": f"10.0.0.{i}:8000", "role": "prefill", "model": "m"}
@@ -260,10 +260,10 @@ class TestCleanConfig:
         assert len(report.fixes) == 0
         assert len(report.suggestions) == 0
 
-    def test_no_false_positives_dual(self):
+    def test_no_false_positives_aggregated(self):
         data = {
             "instances": [
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m"},
             ],
         }
         fixer = ConfigFixer(data)
@@ -329,11 +329,11 @@ class TestModelsShorthandSuggestions:
             "models": [
                 {
                     "name": "m1",
-                    "dual": ["10.0.0.1:8000"],
+                    "aggregated": ["10.0.0.1:8000"],
                 },
                 {
                     "name": "m2",
-                    "dual": ["10.0.0.1:8000"],
+                    "aggregated": ["10.0.0.1:8000"],
                 },
             ],
         }
@@ -368,7 +368,7 @@ class TestInteractiveMode:
         """Interactive mode shows suggestions with 'Press Enter' prompt."""
         data = {
             "instances": [
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m"},
                 {"address": "10.0.0.2:8000", "role": "prefill", "model": "m"},
             ],
         }
@@ -384,13 +384,13 @@ class TestInteractiveMode:
                 )
             assert exit_code == 0
             captured = capsys.readouterr()
-            assert "both dual and prefill/decode" in captured.out
+            assert "both aggregated and prefill/decode" in captured.out
 
     def test_interactive_handles_eof(self, capsys):
         """Interactive mode handles EOFError gracefully."""
         data = {
             "instances": [
-                {"address": "10.0.0.1:8000", "role": "dual", "model": "m"},
+                {"address": "10.0.0.1:8000", "role": "aggregated", "model": "m"},
                 {"address": "10.0.0.2:8000", "role": "prefill", "model": "m"},
             ],
         }

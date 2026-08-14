@@ -2,7 +2,7 @@
 
 ## Overview
 
-MicroPDProxy supports multiple scheduling policies that control how incoming
+MicroDisaggregatedProxy supports multiple scheduling policies that control how incoming
 requests are distributed across backend decode (and prefill) instances.
 Different workloads have different needs — some benefit from even distribution,
 others from session affinity or cache locality. The scheduling policy is

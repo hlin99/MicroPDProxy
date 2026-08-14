@@ -126,5 +126,5 @@ xpyd           # automatically uses ./xpyd.yaml
 The legacy invocation still works:
 
 ```bash
-python core/MicroPDProxyServer.py --model /path/to/model --prefill ... --decode ...
+python core/MicroDisaggregatedProxyServer.py --model /path/to/model --prefill ... --decode ...
 ```

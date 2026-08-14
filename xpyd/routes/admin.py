@@ -67,7 +67,7 @@ def register(router: APIRouter, server) -> None:
             except Exception:
                 return error_response("Invalid instance address", INVALID_REQUEST, 400)
 
-            # validate_instance lives on the Proxy class (MicroPDProxyServer.py)
+            # validate_instance lives on the Proxy class (MicroDisaggregatedProxyServer.py)
             is_valid = await server.validate_instance(instance)
             if not is_valid:
                 return error_response("Instance validation failed", INVALID_REQUEST, 400)

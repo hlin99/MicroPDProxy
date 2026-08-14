@@ -79,7 +79,7 @@ PREFILL_ARGS="127.0.0.1:8100 127.0.0.1:8101"
 DECODE_ARGS=""
 for p in $(seq 8200 8215); do DECODE_ARGS="$DECODE_ARGS 127.0.0.1:$p"; done
 
-python3 core/MicroPDProxyServer.py \
+python3 core/MicroDisaggregatedProxyServer.py \
     --model "$MODEL" \
     --prefill $PREFILL_ARGS \
     --decode $DECODE_ARGS \

@@ -91,8 +91,8 @@ class InstanceRegistry:
             ValueError: If role is not "prefill" or "decode".
             ValueError: If address is already registered.
         """
-        if role not in ("prefill", "decode", "dual"):
-            raise ValueError(f"Invalid role: {role!r}. Must be 'prefill', 'decode', or 'dual'.")
+        if role not in ("prefill", "decode", "aggregated"):
+            raise ValueError(f"Invalid role: {role!r}. Must be 'prefill', 'decode', or 'aggregated'.")
         with self._lock:
             if address in self._instances:
                 raise ValueError(f"Instance {address!r} is already registered.")
@@ -153,8 +153,8 @@ class InstanceRegistry:
                 results.append(instance.address)
             return results
 
-    def get_dual_instances(self, model: str = "") -> List[str]:
-        """Return available dual instances, optionally filtered by model.
+    def get_aggregated_instances(self, model: str = "") -> List[str]:
+        """Return available aggregated instances, optionally filtered by model.
 
         Uses the same availability criteria as get_available_instances:
         only healthy instances with closed circuit breakers are returned.
@@ -164,7 +164,7 @@ class InstanceRegistry:
         with self._lock:
             results = []
             for instance in self._instances.values():
-                if instance.role != "dual":
+                if instance.role != "aggregated":
                     continue
                 if model and instance.model != model:
                     continue

@@ -1,4 +1,4 @@
-# MicroPDProxy Configuration Example
+# MicroDisaggregatedProxy Configuration Example
 #
 # Usage:
 #   xpyd --config examples/proxy.yaml

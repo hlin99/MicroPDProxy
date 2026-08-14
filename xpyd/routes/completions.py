@@ -27,7 +27,7 @@ from xpyd.metrics import (
     proxy_instance_errors_total,
     proxy_prefill_active_requests,
     proxy_prefill_requests_total,
-    record_pd_metrics,
+    record_disaggregated_metrics,
     track_request_end,
     track_request_start,
 )
@@ -527,15 +527,15 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         requested_model = request.get("model", "")
         model_label = requested_model or "unknown"
 
-        # Dual-role fast path: single forward, no P→D split
-        if server._is_dual_model(requested_model):
-            return await _handle_dual_completion(
+        # Aggregated-role fast path: single forward, no P→D split
+        if server._is_aggregated_model(requested_model):
+            return await _handle_aggregated_completion(
                 endpoint, request, raw_request, server,
                 requested_model, total_length, max_tokens, prompt_text,
                 _metrics_start, handler_name,
             )
         zmq_prompt_tokens = None
-        if server.pd_mode == "zmq":
+        if server.disaggregated_mode == "zmq":
             zmq_prompt_tokens = tokenize_zmq_prompt(request, is_chat, server)
             total_length = len(zmq_prompt_tokens)
         kv_prepare_request = build_kv_prepare_request(
@@ -610,7 +610,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
 
         zmq_request_id = None
         zmq_wait_for_notification = False
-        if server.pd_mode == "zmq":
+        if server.disaggregated_mode == "zmq":
             if server.zmq_notifications is None or server.zmq_config is None:
                 raise HTTPException(
                     status_code=503,
@@ -650,7 +650,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         try:
             async for chunk in server.forward_request(
                 f"http://{prefill_instance}"
-                f"{'/v1/completions' if server.pd_mode == 'zmq' else endpoint}",
+                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' else endpoint}",
                 kv_prepare_request,
                 extra_headers=upstream_headers,
             ):
@@ -700,7 +700,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 )
             request = request.copy()
             request["kv_transfer_params"] = kv_transfer_params
-        elif server.pd_mode == "zmq":
+        elif server.disaggregated_mode == "zmq":
             prefill_output = None
             first_token = None
             if server.first_token_source == "prefill":
@@ -748,7 +748,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 yield b""
 
         prefill_only = (
-            server.pd_mode == "zmq"
+            server.disaggregated_mode == "zmq"
             and server.first_token_source == "prefill"
             and max_tokens == 1
         )
@@ -771,7 +771,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             # surface only when wrapped_generator() iterates it.
             generator_d_raw = server.forward_request(
                 f"http://{decode_instance}"
-                f"{'/v1/completions' if server.pd_mode == 'zmq' and is_chat else endpoint}",
+                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' and is_chat else endpoint}",
                 request,
                 extra_headers=upstream_headers,
             )
@@ -779,7 +779,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             generator_d = decode_tracker
 
             if (
-                server.pd_mode == "zmq"
+                server.disaggregated_mode == "zmq"
                 and server.first_token_source == "prefill"
             ):
                 assert prefill_output is not None
@@ -805,7 +805,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     )
                 first_token_from_p = True
             else:
-                if server.pd_mode == "zmq" and is_chat:
+                if server.disaggregated_mode == "zmq" and is_chat:
                     generator_d = (
                         _chat_completion_stream(generator_d)
                         if request.get("stream", False)
@@ -869,7 +869,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     and t_prefill_done is not None
                     and decode_tracker is not None
                 ):
-                    record_pd_metrics(
+                    record_disaggregated_metrics(
                         prefill_instance=prefill_instance,
                         decode_instance=decode_instance,
                         model=model_label,
@@ -913,7 +913,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         )
 
 
-async def _handle_dual_completion(
+async def _handle_aggregated_completion(
     endpoint: str,
     request: dict,
     raw_request: Request,
@@ -925,8 +925,8 @@ async def _handle_dual_completion(
     metrics_start: float,
     handler_name: str,
 ) -> JSONResponse | StreamingResponse:
-    """Single-pass completion for dual-role instances."""
-    instance = server.schedule_dual(
+    """Single-pass completion for aggregated-role instances."""
+    instance = server.schedule_aggregated(
         model,
         request_len=total_length,
         max_tokens=max_tokens,
@@ -940,7 +940,7 @@ async def _handle_dual_completion(
     )
 
     logger.info(
-        "Dual %s request",
+        "Aggregated %s request",
         handler_name,
         extra={
             "model": model,
@@ -980,17 +980,17 @@ async def _handle_dual_completion(
             except CancelledError:
                 _ok = False
                 logger.warning(
-                    "Client disconnected during dual %s (CancelledError)",
+                    "Client disconnected during aggregated %s (CancelledError)",
                     handler_name,
                 )
             except Exception as e:
                 _ok = False
-                logger.error("Exception in dual stream: %s", str(e))
+                logger.error("Exception in aggregated stream: %s", str(e))
                 if server.registry is not None:
                     server.registry.record_failure(instance)
                 raise
             finally:
-                server.schedule_dual_completion(instance, req_len=total_length)
+                server.schedule_aggregated_completion(instance, req_len=total_length)
                 if _ok and server.registry is not None:
                     server.registry.record_success(instance)
                 track_request_end(endpoint, metrics_start)
@@ -1024,7 +1024,7 @@ async def _handle_dual_completion(
                     status_code = 502
             else:
                 status_code = 200
-            server.schedule_dual_completion(
+            server.schedule_aggregated_completion(
                 instance, req_len=total_length,
             )
             if status_code < 400 and server.registry is not None:
@@ -1034,7 +1034,7 @@ async def _handle_dual_completion(
             track_request_end(endpoint, metrics_start)
             return JSONResponse(data, status_code=status_code)
         except HTTPException as http_exc:
-            server.schedule_dual_completion(
+            server.schedule_aggregated_completion(
                 instance, req_len=total_length,
             )
             if server.registry is not None:
@@ -1044,8 +1044,8 @@ async def _handle_dual_completion(
                 str(http_exc.detail), PROXY_ERROR, http_exc.status_code,
             )
         except Exception as e:
-            logger.error("Error in dual non-streaming: %s", str(e))
-            server.schedule_dual_completion(
+            logger.error("Error in aggregated non-streaming: %s", str(e))
+            server.schedule_aggregated_completion(
                 instance, req_len=total_length,
             )
             if server.registry is not None:

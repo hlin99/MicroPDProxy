@@ -5,7 +5,7 @@
 
 ## Overview
 
-MicroPDProxy's resilience layer consists of four components that work together
+MicroDisaggregatedProxy's resilience layer consists of four components that work together
 to detect failures, isolate bad instances, retry failed requests, and
 automatically recover when instances come back online.
 
@@ -120,7 +120,7 @@ health_check:
 ### What
 
 A per-instance finite state machine that automatically stops sending requests
-to an instance that is consistently failing, and gradually recovers when the
+to an instance that is consistently failing, and graaggregatedly recovers when the
 instance comes back.
 
 ### Why

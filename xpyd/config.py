@@ -103,9 +103,9 @@ class InstanceEntry(BaseModel):
     @field_validator("role")
     @classmethod
     def _valid_role(cls, v: str) -> str:
-        if v not in ("prefill", "decode", "dual"):
+        if v not in ("prefill", "decode", "aggregated"):
             raise ValueError(
-                f"role must be 'prefill', 'decode', or 'dual', got {v!r}"
+                f"role must be 'prefill', 'decode', or 'aggregated', got {v!r}"
             )
         return v
 
@@ -148,7 +148,7 @@ class ProxyConfig(BaseModel):
     log_level: str = "warning"
     generator_on_p_node: bool = False
     first_token_source: Literal["prefill", "decode"] = "decode"
-    pd_mode: Literal["direct", "nixl", "zmq"] = "direct"
+    disaggregated_mode: Literal["direct", "nixl", "zmq"] = "direct"
     kv_transfer_backend: Literal["none", "nixl"] = "none"
     zmq: Optional[ZmqConfig] = None
     roundrobin: bool = False
@@ -164,21 +164,21 @@ class ProxyConfig(BaseModel):
     _model_schedulers: Dict[str, str] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
-    def _normalize_pd_mode(self) -> "ProxyConfig":
+    def _normalize_disaggregated_mode(self) -> "ProxyConfig":
         if self.generator_on_p_node:
             self.first_token_source = "prefill"
         if self.kv_transfer_backend == "nixl":
-            if self.pd_mode not in ("direct", "nixl"):
+            if self.disaggregated_mode not in ("direct", "nixl"):
                 raise ValueError(
-                    "kv_transfer_backend=nixl conflicts with pd_mode="
-                    f"{self.pd_mode}"
+                    "kv_transfer_backend=nixl conflicts with disaggregated_mode="
+                    f"{self.disaggregated_mode}"
                 )
-            self.pd_mode = "nixl"
-        if self.pd_mode == "nixl":
+            self.disaggregated_mode = "nixl"
+        if self.disaggregated_mode == "nixl":
             self.kv_transfer_backend = "nixl"
-        if self.pd_mode == "zmq":
+        if self.disaggregated_mode == "zmq":
             if self.zmq is None:
-                raise ValueError("pd_mode=zmq requires a zmq configuration")
+                raise ValueError("disaggregated_mode=zmq requires a zmq configuration")
             missing = set(self.decode) - set(self.zmq.receivers)
             if missing:
                 raise ValueError(
@@ -266,7 +266,7 @@ class ProxyConfig(BaseModel):
                     "Cannot use 'instances' or 'models' together with "
                     "legacy 'prefill'/'decode' lists."
                 )
-            # Each model needs (P+D) or (dual), not strictly decode
+            # Each model needs (prefill/decode) or (aggregated), not strictly decode
             if self.instances is not None:
                 self._validate_instance_roles(self.instances)
             return self
@@ -282,27 +282,27 @@ class ProxyConfig(BaseModel):
 
     @staticmethod
     def _validate_instance_roles(instances: List[InstanceEntry]) -> None:
-        """Validate that each model has either (P+D) or (dual), not mixed."""
+        """Validate that each model has either (prefill/decode) or (aggregated), not mixed."""
         from collections import defaultdict
         model_roles: Dict[str, set] = defaultdict(set)
         for e in instances:
             model_roles[e.model].add(e.role)
         for model_name, roles in model_roles.items():
-            has_dual = "dual" in roles
-            has_pd = "prefill" in roles or "decode" in roles
-            if has_dual and has_pd:
+            has_aggregated = "aggregated" in roles
+            has_disaggregated = "prefill" in roles or "decode" in roles
+            if has_aggregated and has_disaggregated:
                 raise ValueError(
-                    f"Model {model_name!r} mixes dual and prefill/decode "
-                    f"instances. A model must use either all dual or "
+                    f"Model {model_name!r} mixes aggregated and prefill/decode "
+                    f"instances. A model must use either all aggregated or "
                     f"prefill+decode instances, not both."
                 )
-            if not has_dual:
+            if not has_aggregated:
                 if "prefill" not in roles or "decode" not in roles:
                     raise ValueError(
                         f"Model {model_name!r} requires at least one prefill "
-                        f"and one decode instance (or use all dual instances)."
+                        f"and one decode instance (or use all aggregated instances)."
                     )
-            # dual-only model is valid
+            # aggregated-only model is valid
 
     @model_validator(mode="after")
     def _expand_models_to_instances(self) -> "ProxyConfig":
@@ -315,7 +315,7 @@ class ProxyConfig(BaseModel):
             expanded: List[InstanceEntry] = []
             model_schedulers: Dict[str, str] = {}
             _known_model_keys = {
-                "name", "prefill", "decode", "dual", "scheduler",
+                "name", "prefill", "decode", "aggregated", "scheduler",
             }
             for entry in self.models:
                 name = entry.get("name", "")
@@ -329,11 +329,11 @@ class ProxyConfig(BaseModel):
                         f"Unknown keys in model {name!r}: "
                         f"{sorted(unknown_keys)}"
                     )
-                has_dual = bool(entry.get("dual"))
-                has_pd = bool(entry.get("prefill")) or bool(entry.get("decode"))
-                if has_dual and has_pd:
+                has_aggregated = bool(entry.get("aggregated"))
+                has_disaggregated = bool(entry.get("prefill")) or bool(entry.get("decode"))
+                if has_aggregated and has_disaggregated:
                     raise ValueError(
-                        f"Model {name!r} cannot have both 'dual' and "
+                        f"Model {name!r} cannot have both 'aggregated' and "
                         f"'prefill'/'decode' fields."
                     )
                 for addr in entry.get("prefill", []):
@@ -344,9 +344,9 @@ class ProxyConfig(BaseModel):
                     expanded.append(InstanceEntry(
                         address=addr, role="decode", model=name,
                     ))
-                for addr in entry.get("dual", []):
+                for addr in entry.get("aggregated", []):
                     expanded.append(InstanceEntry(
-                        address=addr, role="dual", model=name,
+                        address=addr, role="aggregated", model=name,
                     ))
                 if "scheduler" in entry:
                     model_schedulers[name] = entry["scheduler"]

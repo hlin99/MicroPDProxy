@@ -26,7 +26,7 @@ from xpyd.scheduler.policy_registry import default_registry
 # Constants
 # ---------------------------------------------------------------------------
 
-_VALID_ROLES = ("prefill", "decode", "dual")
+_VALID_ROLES = ("prefill", "decode", "aggregated")
 _DEFAULT_PORT = 8000
 _MIN_FUZZY_LEN = 3
 
@@ -147,9 +147,9 @@ class ConfigFixer:
         self._fix_instances()
         self._fix_models()
         # Suggest-only rules
-        self._suggest_dual_pd_mix()
+        self._suggest_aggregated_disaggregated_mix()
         self._suggest_address_conflict()
-        self._suggest_unbalanced_pd()
+        self._suggest_unbalanced_disaggregated()
         self._suggest_missing_decode()
         return self._report
 
@@ -325,8 +325,8 @@ class ConfigFixer:
                     new_value=repr(entry["name"]),
                     description="model name whitespace trimmed",
                 ))
-            # Fix addresses in prefill/decode/dual lists
-            for role_key in ("prefill", "decode", "dual"):
+            # Fix addresses in prefill/decode/aggregated lists
+            for role_key in ("prefill", "decode", "aggregated"):
                 addrs = entry.get(role_key)
                 if not isinstance(addrs, list):
                     continue
@@ -405,7 +405,7 @@ class ConfigFixer:
                 if not isinstance(entry, dict):
                     continue
                 name = entry.get("name", "")
-                for role_key in ("prefill", "decode", "dual"):
+                for role_key in ("prefill", "decode", "aggregated"):
                     addrs = entry.get(role_key)
                     if isinstance(addrs, list):
                         model_roles[name][role_key] += len(addrs)
@@ -428,7 +428,7 @@ class ConfigFixer:
                 if not isinstance(entry, dict):
                     continue
                 name = entry.get("name", "")
-                for role_key in ("prefill", "decode", "dual"):
+                for role_key in ("prefill", "decode", "aggregated"):
                     addrs = entry.get(role_key)
                     if isinstance(addrs, list):
                         for addr in addrs:
@@ -436,17 +436,17 @@ class ConfigFixer:
                                 addr_models[addr].append(name)
         return addr_models
 
-    def _suggest_dual_pd_mix(self) -> None:
-        """Warn when a model mixes dual and P/D instances."""
+    def _suggest_aggregated_disaggregated_mix(self) -> None:
+        """Warn when a model mixes aggregated and disaggregated instances."""
         for model, roles in self._collect_model_roles().items():
-            has_dual = roles.get("dual", 0) > 0
-            has_pd = roles.get("prefill", 0) > 0 or roles.get("decode", 0) > 0
-            if has_dual and has_pd:
+            has_aggregated = roles.get("aggregated", 0) > 0
+            has_disaggregated = roles.get("prefill", 0) > 0 or roles.get("decode", 0) > 0
+            if has_aggregated and has_disaggregated:
                 self._report.suggestions.append(Suggestion(
                     path=f"model '{model}'",
                     message=(
-                        f"Model '{model}' has both dual and prefill/decode "
-                        f"instances. Consider converting all to dual or all "
+                        f"Model '{model}' has both aggregated and prefill/decode "
+                        f"instances. Consider converting all to aggregated or all "
                         f"to prefill/decode."
                     ),
                 ))
@@ -464,7 +464,7 @@ class ConfigFixer:
                     ),
                 ))
 
-    def _suggest_unbalanced_pd(self) -> None:
+    def _suggest_unbalanced_disaggregated(self) -> None:
         """Warn when prefill/decode ratio is heavily unbalanced."""
         for model, roles in self._collect_model_roles().items():
             p = roles.get("prefill", 0)
@@ -484,17 +484,17 @@ class ConfigFixer:
     def _suggest_missing_decode(self) -> None:
         """Warn when prefill is present but decode is missing."""
         for model, roles in self._collect_model_roles().items():
-            has_dual = roles.get("dual", 0) > 0
+            has_aggregated = roles.get("aggregated", 0) > 0
             p = roles.get("prefill", 0)
             d = roles.get("decode", 0)
-            if has_dual:
+            if has_aggregated:
                 continue
             if p > 0 and d == 0:
                 self._report.suggestions.append(Suggestion(
                     path=f"model '{model}'",
                     message=(
                         f"Model '{model}' has {p} prefill but no decode "
-                        f"instances. P/D mode requires both."
+                        f"instances. disaggregated mode requires both."
                     ),
                 ))
             elif d > 0 and p == 0:
@@ -502,7 +502,7 @@ class ConfigFixer:
                     path=f"model '{model}'",
                     message=(
                         f"Model '{model}' has {d} decode but no prefill "
-                        f"instances. P/D mode requires both."
+                        f"instances. disaggregated mode requires both."
                     ),
                 ))
 
@@ -549,8 +549,8 @@ def run_fix_config(
 
     # Handle suggestions
     # Note: Suggestions are informational — they describe semantic issues
-    # that require human judgment (e.g. converting all instances to dual,
-    # rebalancing P/D ratios).  In --interactive mode, the user is asked
+    # that require human judgment (e.g. converting all instances to aggregated,
+    # rebalancing disaggregated serving ratios).  In --interactive mode, the user is asked
     # to acknowledge each suggestion; this does not auto-apply changes
     # because the correct resolution depends on the user's intent.
     if report.suggestions:

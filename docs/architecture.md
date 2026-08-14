@@ -11,7 +11,7 @@
                                    ▼
                          ┌─────────────────────┐
                          │       Proxy          │
-                         │  (MicroPDProxyServer)│
+                         │  (MicroDisaggregatedProxyServer)│
                          │  Routing + Scheduling│
                          └───┬─────────────┬───┘
                              │             │
@@ -26,9 +26,9 @@
                    └─────────────┘   └────────────────┘
 ```
 
-## PD-Separated Architecture
+## Disaggregated Architecture
 
-MicroPDProxy implements a **Prefill-Decode (PD) separated** serving architecture
+MicroDisaggregatedProxy implements a **Prefill-Decode disaggregated** serving architecture
 for large language models. The two phases of autoregressive inference are split
 across dedicated node pools:
 
@@ -43,7 +43,7 @@ for latency (smaller batch, faster per-token).
 
 ## Core Components
 
-### Proxy (`core/MicroPDProxyServer.py`)
+### Proxy (`core/MicroDisaggregatedProxyServer.py`)
 
 The central routing and scheduling component. It:
 
@@ -91,7 +91,7 @@ The central routing and scheduling component. It:
 
 ## Topology Concepts
 
-MicroPDProxy uses the following topology parameters (configured via
+MicroDisaggregatedProxy uses the following topology parameters (configured via
 `xpyd_start_proxy.sh`):
 
 | Concept | Description |

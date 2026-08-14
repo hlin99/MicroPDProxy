@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Prometheus-compatible metrics for MicroPDProxy."""
+"""Prometheus-compatible metrics for MicroDisaggregatedProxy."""
 
 import time
 
@@ -55,7 +55,7 @@ def get_metrics() -> bytes:
     return generate_latest(REGISTRY)
 
 
-# --- PD Disaggregation Metrics ---
+# --- Disaggregated Serving Metrics ---
 
 proxy_prefill_duration_seconds = Histogram(
     "proxy_prefill_duration_seconds",
@@ -176,7 +176,7 @@ class FirstTokenTracker:
             yield chunk
 
 
-def record_pd_metrics(
+def record_disaggregated_metrics(
     prefill_instance: str,
     decode_instance: str,
     model: str,
@@ -186,7 +186,7 @@ def record_pd_metrics(
     is_streaming: bool = False,
     first_token_from_prefill: bool = False,
 ) -> None:
-    """Record PD disaggregation metrics after a request completes.
+    """Record disaggregated serving metrics after a request completes.
 
     Note on TTFT: TTFT depends on generator_on_p_node config:
     - P-first: TTFT = prefill duration (first token from P)

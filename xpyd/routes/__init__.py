@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Route registration aggregator for MicroPDProxy."""
+"""Route registration aggregator for MicroDisaggregatedProxy."""
 
 from fastapi import APIRouter
 

@@ -18,9 +18,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/xpyd-pd-metrics.json
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/xpyd-disaggregated-metrics.json
     volumes:
-      - ./grafana/xpyd-pd-metrics.json:/var/lib/grafana/dashboards/xpyd-pd-metrics.json:ro
+      - ./grafana/xpyd-disaggregated-metrics.json:/var/lib/grafana/dashboards/xpyd-disaggregated-metrics.json:ro
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     ports:
       - "3000:3000"

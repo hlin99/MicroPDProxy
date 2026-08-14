@@ -11,8 +11,8 @@
 ## Quick Install
 
 ```bash
-git clone https://github.com/hlin99/MicroPDProxy.git
-cd MicroPDProxy
+git clone https://github.com/hlin99/MicroDisaggregatedProxy.git
+cd MicroDisaggregatedProxy
 pip install -r requirements.txt
 ```
 
@@ -21,7 +21,7 @@ pip install -r requirements.txt
 ### Direct invocation
 
 ```bash
-python3 core/MicroPDProxyServer.py \
+python3 core/MicroDisaggregatedProxyServer.py \
   --model /path/to/tokenizer \
   --prefill 10.0.0.1:8100 10.0.0.2:8100 \
   --decode  10.0.0.3:8200 10.0.0.4:8200 \
@@ -63,7 +63,7 @@ docker build -t micropdproxy .
 
 # Run (connect to external prefill/decode nodes)
 docker run -p 8868:8868 micropdproxy \
-  python3 core/MicroPDProxyServer.py \
+  python3 core/MicroDisaggregatedProxyServer.py \
   --model tokenizers/DeepSeek-R1 \
   --prefill 10.0.0.1:8100 \
   --decode  10.0.0.3:8200 \

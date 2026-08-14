@@ -1,6 +1,6 @@
 # Monitoring Stack for xPyD-proxy
 
-One-click Prometheus + Grafana deployment for PD disaggregation metrics.
+One-click Prometheus + Grafana deployment for disaggregated serving metrics.
 
 ## Quick Start
 
@@ -20,7 +20,7 @@ xPyD-proxy (:8000/metrics) → Prometheus (:9090) → Grafana (:3000)
 
 ## Grafana Dashboard
 
-A pre-provisioned dashboard **"xPyD Proxy — PD Disaggregation Metrics"** is
+A pre-provisioned dashboard **"xPyD Proxy — Disaggregated Serving Metrics"** is
 automatically loaded with panels for:
 
 | Panel | Description |
@@ -51,7 +51,7 @@ For multi-proxy deployments, add additional targets or use service discovery.
 
 ## Metrics Reference
 
-All PD metrics carry `prefill_instance`, `decode_instance`, and `model` labels.
+All disaggregated metrics carry `prefill_instance`, `decode_instance`, and `model` labels.
 
 | Metric | Type | Description |
 |--------|------|-------------|

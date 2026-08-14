@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from xpyd.proxy import Proxy
 
 
-def test_get_from_instance_aggregates_dual_instances() -> None:
-    """Health aggregation queries every configured dual-role instance."""
+def test_get_from_instance_aggregates_aggregated_instances() -> None:
+    """Health aggregation queries every configured aggregated-role instance."""
     proxy = MagicMock()
     proxy.prefill_instances = []
     proxy.decode_instances = []
-    proxy.dual_instances = {
+    proxy.aggregated_instances = {
         "llama": ["127.0.0.1:8000", "127.0.0.1:8001"],
     }
 

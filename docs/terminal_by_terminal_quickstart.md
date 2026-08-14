@@ -18,7 +18,7 @@ Use this when you want the most explicit step-by-step local setup.
 ## Terminal A — start dummy prefill #1
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 uvicorn dummy_nodes.prefill_node:app --host 127.0.0.1 --port 8100 --log-level warning
 ```
 
@@ -31,7 +31,7 @@ Expected result:
 ## Terminal B — start dummy prefill #2
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 uvicorn dummy_nodes.prefill_node:app --host 127.0.0.1 --port 8101 --log-level warning
 ```
 
@@ -44,7 +44,7 @@ Expected result:
 ## Terminal C — start dummy decode #1
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 uvicorn dummy_nodes.decode_node:app --host 127.0.0.1 --port 8200 --log-level warning
 ```
 
@@ -57,7 +57,7 @@ Expected result:
 ## Terminal D — start dummy decode #2
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 uvicorn dummy_nodes.decode_node:app --host 127.0.0.1 --port 8201 --log-level warning
 ```
 
@@ -70,7 +70,7 @@ Expected result:
 ## Terminal E — launch proxy through the shell script
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 
 export model_path=$PWD/tests/assets/dummy_tokenizer
 export XPYD_PREFILL_IPS="127.0.0.1 127.0.0.1"
@@ -88,7 +88,7 @@ bash core/xpyd_start_proxy.sh \
 ```
 
 Expected result:
-- terminal prints a `Running: python3 ./MicroPDProxyServer.py ...` line
+- terminal prints a `Running: python3 ./MicroDisaggregatedProxyServer.py ...` line
 - proxy keeps running in foreground
 - no startup validation error
 
@@ -110,7 +110,7 @@ Expected result:
 ## Terminal F — send a non-streaming request
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 
 curl http://127.0.0.1:8868/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -131,7 +131,7 @@ Expected result:
 ## Terminal F — send a streaming request
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 
 curl http://127.0.0.1:8868/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -158,7 +158,7 @@ data: [DONE]
 Use this if you only want to see the shell-script-generated proxy command.
 
 ```bash
-cd /path/to/MicroPDProxy
+cd /path/to/MicroDisaggregatedProxy
 
 export model_path=$PWD/tests/assets/dummy_tokenizer
 export XPYD_PREFILL_IPS="127.0.0.1 127.0.0.1"

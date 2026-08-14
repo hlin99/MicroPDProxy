@@ -2,7 +2,7 @@
 
 ## Overview
 
-MicroPDProxy exposes a Prometheus-compatible `/metrics` endpoint for real-time observability of proxy behavior, including request counts, latency distributions, and in-flight request tracking.
+MicroDisaggregatedProxy exposes a Prometheus-compatible `/metrics` endpoint for real-time observability of proxy behavior, including request counts, latency distributions, and in-flight request tracking.
 
 ## Available Metrics
 
@@ -53,4 +53,4 @@ proxy_active_requests
 
 Metrics are **always enabled** — no configuration is needed. The `/metrics` endpoint is available as soon as the proxy starts.
 
-> **Note:** MicroPDProxy uses a dedicated `CollectorRegistry` to avoid exposing default process collectors, keeping the metrics output clean and focused on proxy-specific data.
+> **Note:** MicroDisaggregatedProxy uses a dedicated `CollectorRegistry` to avoid exposing default process collectors, keeping the metrics output clean and focused on proxy-specific data.

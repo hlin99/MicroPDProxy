@@ -1,0 +1,26 @@
+# All addresses are loopback placeholders: prefill/decode lists are backend hosts; zmq.host is the proxy host; receiver keys are decode hosts.
+model: /workspace/Meta-Llama-3-8B-Instruct/
+prefill:
+  - 127.0.0.1:8100
+  - 127.0.0.1:8101
+decode:
+  - 127.0.0.1:8200
+  - 127.0.0.1:8201
+port: 8868
+log_level: info
+scheduling: roundrobin
+disaggregated_mode: zmq
+first_token_source: decode
+zmq:
+  host: 127.0.0.1
+  port: 7500
+  notification_timeout_seconds: 60
+  receivers:
+    "127.0.0.1:8200":
+      host: 127.0.0.1
+      init_ports: [7300]
+      alloc_ports: [7400]
+    "127.0.0.1:8201":
+      host: 127.0.0.1
+      init_ports: [7301]
+      alloc_ports: [7401]
