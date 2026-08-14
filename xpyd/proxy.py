@@ -174,7 +174,6 @@ class Proxy:
         self.model_schedulers = model_schedulers or {}
         self.disaggregated_mode = disaggregated_mode
         self.first_token_source = first_token_source
-        self.kv_transfer_backend = "nixl" if disaggregated_mode == "nixl" else "none"
         self.zmq_config = zmq_config
         self.zmq_notifications = None
         self._aggregated_rr_counters: dict[str, int] = {}

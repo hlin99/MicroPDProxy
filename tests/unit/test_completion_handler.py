@@ -257,7 +257,7 @@ class TestBuildKvPrepareRequest:
         result = build_kv_prepare_request(
             req,
             is_chat=False,
-            kv_transfer_backend="nixl",
+            disaggregated_mode="nixl",
         )
 
         assert result["stream"] is False
@@ -594,7 +594,6 @@ class TestHandleCompletion:
         receiver.alloc_ports = [7400]
         server.disaggregated_mode = "zmq"
         server.first_token_source = source
-        server.kv_transfer_backend = "none"
         server.tokenizer.apply_chat_template.return_value = {
             "input_ids": [1, 2, 3],
             "attention_mask": [1, 1, 1],

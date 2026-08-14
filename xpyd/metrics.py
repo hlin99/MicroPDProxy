@@ -188,7 +188,7 @@ def record_disaggregated_metrics(
 ) -> None:
     """Record disaggregated serving metrics after a request completes.
 
-    Note on TTFT: TTFT depends on generator_on_p_node config:
+    Note on TTFT: TTFT depends on first_token_source:
     - P-first: TTFT = prefill duration (first token from P)
     - D-first (default): TTFT = prefill + KV transfer + decode first token
     Controlled by first_token_from_prefill parameter.

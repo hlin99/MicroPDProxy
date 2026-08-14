@@ -101,7 +101,6 @@ def _make_args(**overrides):
         "prefill": None,
         "decode": None,
         "port": 8000,
-        "generator_on_p_node": False,
         "roundrobin": False,
         "log_level": "warning",
     }

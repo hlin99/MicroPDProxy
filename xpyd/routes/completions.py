@@ -98,14 +98,14 @@ def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[in
 def build_kv_prepare_request(
     request: dict,
     is_chat: bool,
-    kv_transfer_backend: str = "none",
+    disaggregated_mode: str = "direct",
 ) -> dict:
     """Build the KV-prepare request with max_tokens=1."""
     kv_prepare_request = request.copy()
     kv_prepare_request["max_tokens"] = 1
     if is_chat:
         kv_prepare_request["max_completion_tokens"] = 1
-    if kv_transfer_backend == "nixl":
+    if disaggregated_mode == "nixl":
         kv_prepare_request["stream"] = False
         kv_prepare_request.pop("stream_options", None)
         kv_prepare_request["kv_transfer_params"] = {
@@ -539,10 +539,10 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             zmq_prompt_tokens = tokenize_zmq_prompt(request, is_chat, server)
             total_length = len(zmq_prompt_tokens)
         kv_prepare_request = build_kv_prepare_request(
-            request, is_chat, server.kv_transfer_backend,
+            request, is_chat, server.disaggregated_mode,
         )
         upstream_headers = None
-        if server.kv_transfer_backend == "nixl":
+        if server.disaggregated_mode == "nixl":
             request_id = (
                 raw_request.headers.get("x-request-id")
                 or str(uuid.uuid4())
@@ -684,7 +684,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         value = (
             value.strip().decode("utf-8").removesuffix("data: [DONE]").encode("utf-8")
         )
-        if server.kv_transfer_backend == "nixl":
+        if server.disaggregated_mode == "nixl":
             try:
                 prefill_output = json.loads(value)
             except json.JSONDecodeError as exc:

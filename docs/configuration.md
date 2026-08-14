@@ -41,6 +41,7 @@ decode:
 
 # Scheduling
 scheduling: loadbalanced        # roundrobin | loadbalanced
+disaggregated_mode: direct     # direct | nixl | zmq
 first_token_source: decode       # prefill | decode; applies to every disaggregated mode
 
 # Authentication
@@ -69,6 +70,7 @@ startup:
 | `decode.dp_size` | integer | **yes** | — | Total number of decode data-parallel instances. |
 | `decode.world_size_per_node` | integer | **yes** | — | Number of GPUs / workers per decode node. |
 | `scheduling` | string | no | `loadbalanced` | Scheduling policy name. Currently `roundrobin` or `loadbalanced`. |
+| `disaggregated_mode` | string | no | `direct` | KV transfer mode. `direct`, `nixl`, and `zmq` are supported. |
 | `first_token_source` | string | no | `decode` | Backend that provides the first client-visible token. `prefill` and `decode` are supported uniformly in direct, NIXL, and ZMQ modes. |
 | `admin_api_key` | string | no | `""` | API key for admin endpoints. Can also be set via `ADMIN_API_KEY` env var. |
 | `openai_api_key` | string | no | `""` | API key for OpenAI-compatible endpoints. Can also be set via `OPENAI_API_KEY` env var. |
@@ -202,7 +204,7 @@ decode:
   world_size_per_node: 4
 
 scheduling: roundrobin
-generator_on_p_node: false
+first_token_source: decode
 ```
 
 ### Production Configuration
@@ -231,7 +233,7 @@ decode:
   world_size_per_node: 8
 
 scheduling: loadbalanced
-generator_on_p_node: false
+first_token_source: decode
 
 admin_api_key: "${ADMIN_API_KEY}"
 openai_api_key: "${OPENAI_API_KEY}"

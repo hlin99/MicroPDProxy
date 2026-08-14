@@ -7,7 +7,7 @@ decode:
   - "127.0.0.1:8200"
   - "127.0.0.1:8201"
 
-kv_transfer_backend: nixl
+disaggregated_mode: nixl
 scheduling: roundrobin
 first_token_source: decode
 port: 8868

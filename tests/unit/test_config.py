@@ -20,17 +20,16 @@ class TestProxyConfigValidation:
         assert cfg.prefill == []
         assert cfg.decode == ["10.0.0.1:8000"]
         assert cfg.port == 8000
-        assert cfg.kv_transfer_backend == "none"
         assert cfg.first_token_source == "decode"
 
-    def test_nixl_kv_transfer_backend(self):
+    def test_nixl_disaggregated_mode(self):
         cfg = ProxyConfig(
             model="m",
             prefill=["10.0.0.1:8001"],
             decode=["10.0.0.2:8002"],
-            kv_transfer_backend="nixl",
+            disaggregated_mode="nixl",
         )
-        assert cfg.kv_transfer_backend == "nixl"
+        assert cfg.disaggregated_mode == "nixl"
 
     def test_valid_full(self):
         cfg = ProxyConfig(
@@ -38,13 +37,12 @@ class TestProxyConfigValidation:
             prefill=["10.0.0.1:8001"],
             decode=["10.0.0.2:8002", "10.0.0.3:8003"],
             port=9000,
-            generator_on_p_node=True,
+            first_token_source="prefill",
             roundrobin=True,
             admin_api_key="secret",
             openai_api_key="sk-test",
         )
         assert cfg.port == 9000
-        assert cfg.generator_on_p_node is True
         assert cfg.first_token_source == "prefill"
         assert cfg.roundrobin is True
         assert cfg.admin_api_key == "secret"
@@ -93,10 +91,21 @@ class TestProxyConfigValidation:
         with pytest.raises(ValueError):
             ProxyConfig(model="m", decode=["10.0.0.1:8000"], unknown="x")
 
+    @pytest.mark.parametrize(
+        "legacy_field",
+        ["generator_on_p_node", "kv_transfer_backend"],
+    )
+    def test_legacy_fields_rejected(self, legacy_field):
+        with pytest.raises(ValueError, match=legacy_field):
+            ProxyConfig(
+                model="m",
+                decode=["10.0.0.1:8000"],
+                **{legacy_field: False},
+            )
+
     def test_defaults(self):
         cfg = ProxyConfig(model="m", decode=["10.0.0.1:8000"])
         assert cfg.port == 8000
-        assert cfg.generator_on_p_node is False
         assert cfg.first_token_source == "decode"
         assert cfg.roundrobin is False
         assert cfg.admin_api_key is None
@@ -113,7 +122,6 @@ class TestProxyConfigFromArgs:
             "prefill": ["10.0.0.1:8001"],
             "decode": ["10.0.0.2:8002"],
             "port": 8000,
-            "generator_on_p_node": False,
             "roundrobin": False,
         }
         defaults.update(overrides)
@@ -203,6 +211,18 @@ class TestProxyConfigFromYaml:
         with patch.dict(os.environ, {"ADMIN_API_KEY": "env-key"}):
             cfg = ProxyConfig.from_yaml(str(p))
         assert cfg.admin_api_key == "env-key"
+
+    @pytest.mark.parametrize(
+        "legacy_field",
+        ["generator_on_p_node", "kv_transfer_backend"],
+    )
+    def test_from_yaml_legacy_fields_rejected(self, tmp_path, legacy_field):
+        p = tmp_path / "cfg.yaml"
+        p.write_text(
+            f"model: m\ndecode:\n  - '10.0.0.1:8000'\n{legacy_field}: false\n"
+        )
+        with pytest.raises(ValueError, match=legacy_field):
+            ProxyConfig.from_yaml(p)
 
     @pytest.mark.parametrize("disaggregated_mode", ["direct", "nixl"])
     @pytest.mark.parametrize("source", ["prefill", "decode"])
@@ -402,7 +422,6 @@ class TestMultiModelConfig:
             prefill=None,
             decode=None,
             port=8000,
-            generator_on_p_node=False,
             roundrobin=False,
             log_level="warning",
         )

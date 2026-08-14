@@ -146,10 +146,8 @@ class ProxyConfig(BaseModel):
     models: Optional[List[Dict[str, Any]]] = None
     port: int = 8000
     log_level: str = "warning"
-    generator_on_p_node: bool = False
     first_token_source: Literal["prefill", "decode"] = "decode"
     disaggregated_mode: Literal["direct", "nixl", "zmq"] = "direct"
-    kv_transfer_backend: Literal["none", "nixl"] = "none"
     zmq: Optional[ZmqConfig] = None
     roundrobin: bool = False
     scheduling: str = "loadbalanced"
@@ -164,18 +162,7 @@ class ProxyConfig(BaseModel):
     _model_schedulers: Dict[str, str] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
-    def _normalize_disaggregated_mode(self) -> "ProxyConfig":
-        if self.generator_on_p_node:
-            self.first_token_source = "prefill"
-        if self.kv_transfer_backend == "nixl":
-            if self.disaggregated_mode not in ("direct", "nixl"):
-                raise ValueError(
-                    "kv_transfer_backend=nixl conflicts with disaggregated_mode="
-                    f"{self.disaggregated_mode}"
-                )
-            self.disaggregated_mode = "nixl"
-        if self.disaggregated_mode == "nixl":
-            self.kv_transfer_backend = "nixl"
+    def _validate_disaggregated_mode(self) -> "ProxyConfig":
         if self.disaggregated_mode == "zmq":
             if self.zmq is None:
                 raise ValueError("disaggregated_mode=zmq requires a zmq configuration")
@@ -441,7 +428,6 @@ class ProxyConfig(BaseModel):
             "prefill": None,
             "decode": None,
             "port": 8000,
-            "generator_on_p_node": False,
             "roundrobin": False,
             "log_level": "warning",
             "wait_timeout_seconds": 600,

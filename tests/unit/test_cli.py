@@ -122,6 +122,7 @@ class TestSubcommandParser:
             "-d",
             "--roundrobin",
             "--generator_on_p_node",
+            "--kv-transfer-backend",
         ):
             with pytest.raises(SystemExit):
                 parser.parse_args(["proxy", flag, "value"])
