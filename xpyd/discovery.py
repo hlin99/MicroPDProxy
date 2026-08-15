@@ -18,7 +18,7 @@ import aiohttp
 if TYPE_CHECKING:
     from xpyd.registry import InstanceRegistry
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("xpyd.proxy")
 
 
 class DiscoveryTimeout(Exception):
@@ -40,6 +40,7 @@ class NodeDiscovery:
         decode_instances: List[str],
         probe_interval: float = 10.0,
         wait_timeout: float = 600.0,
+        heartbeat_interval: float = 30.0,
         registry: Optional["InstanceRegistry"] = None,
         aggregated_instances: Optional[List[str]] = None,
     ):
@@ -48,6 +49,7 @@ class NodeDiscovery:
         self.aggregated_instances = aggregated_instances or []
         self.probe_interval = probe_interval
         self.wait_timeout = wait_timeout
+        self.heartbeat_interval = heartbeat_interval
         self.registry = registry
 
         self.healthy_prefill: Set[str] = set()
@@ -55,6 +57,7 @@ class NodeDiscovery:
         self.healthy_aggregated: Set[str] = set()
         self._ready = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._last_heartbeat: float | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -106,6 +109,7 @@ class NodeDiscovery:
         ) as session:
             while True:
                 await self._probe_all(session)
+                self._log_heartbeat_if_due()
 
                 if self.is_ready and not self._ready.is_set():
                     self._ready.set()
@@ -126,6 +130,54 @@ class NodeDiscovery:
                     )
 
                 await asyncio.sleep(self.probe_interval)
+
+    def _log_heartbeat_if_due(self) -> None:
+        """Log node mode and online counts at a bounded cadence."""
+        now = time.monotonic()
+        if (
+            self._last_heartbeat is not None
+            and now - self._last_heartbeat < self.heartbeat_interval
+        ):
+            return
+        self._last_heartbeat = now
+        has_disaggregated = bool(
+            self.prefill_instances or self.decode_instances
+        )
+        has_aggregated = bool(self.aggregated_instances)
+        fields = []
+        if has_disaggregated:
+            fields.extend(
+                (
+                    self._role_heartbeat(
+                        "P", self.prefill_instances, self.healthy_prefill
+                    ),
+                    self._role_heartbeat(
+                        "D", self.decode_instances, self.healthy_decode
+                    ),
+                )
+            )
+        if has_aggregated:
+            fields.append(
+                self._role_heartbeat(
+                    "aggregated",
+                    self.aggregated_instances,
+                    self.healthy_aggregated,
+                )
+            )
+        mode = (
+            "mixed"
+            if has_disaggregated and has_aggregated
+            else "disaggregated"
+            if has_disaggregated
+            else "aggregated"
+        )
+        logger.info("Node heartbeat | mode=%s | %s", mode, " | ".join(fields))
+
+    @staticmethod
+    def _role_heartbeat(
+        role: str, configured: List[str], online: Set[str]
+    ) -> str:
+        return f"{role}={len(online)}/{len(configured)} online"
 
     async def _probe_all(self, session: aiohttp.ClientSession):
         """Probe all prefill, decode, and aggregated nodes once."""

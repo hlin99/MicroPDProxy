@@ -156,6 +156,7 @@ class ProxyConfig(BaseModel):
     openai_api_key: Optional[str] = None
     wait_timeout_seconds: int = 600
     probe_interval_seconds: int = 10
+    heartbeat_interval_seconds: float = Field(default=30.0, gt=0)
     health_check: HealthCheckConfig = HealthCheckConfig()
     circuit_breaker: CircuitBreakerConfig = CircuitBreakerConfig()
     retry: ResilienceConfig = ResilienceConfig()
@@ -432,6 +433,7 @@ class ProxyConfig(BaseModel):
             "log_level": "warning",
             "wait_timeout_seconds": 600,
             "probe_interval_seconds": 10,
+            "heartbeat_interval_seconds": 30.0,
         }
 
         # 1. Load YAML base (if provided)
@@ -452,12 +454,17 @@ class ProxyConfig(BaseModel):
                 f"'startup' section must be a mapping, got {type(startup).__name__}"
             )
         if isinstance(startup, dict):
-            for key in ("wait_timeout_seconds", "probe_interval_seconds"):
+            for key in (
+                "wait_timeout_seconds",
+                "probe_interval_seconds",
+                "heartbeat_interval_seconds",
+            ):
                 if key in startup:
                     yaml_data[key] = startup[key]
             unknown_startup = set(startup.keys()) - {
                 "wait_timeout_seconds",
                 "probe_interval_seconds",
+                "heartbeat_interval_seconds",
             }
             if unknown_startup:
                 raise ValueError(
@@ -606,12 +613,17 @@ class ProxyConfig(BaseModel):
                 f"'startup' section must be a mapping, got {type(startup).__name__}"
             )
         if isinstance(startup, dict):
-            for key in ("wait_timeout_seconds", "probe_interval_seconds"):
+            for key in (
+                "wait_timeout_seconds",
+                "probe_interval_seconds",
+                "heartbeat_interval_seconds",
+            ):
                 if key in startup:
                     yaml_data[key] = startup[key]
             unknown_startup = set(startup.keys()) - {
                 "wait_timeout_seconds",
                 "probe_interval_seconds",
+                "heartbeat_interval_seconds",
             }
             if unknown_startup:
                 raise ValueError(

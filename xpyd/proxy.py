@@ -76,7 +76,8 @@ handler.setFormatter(formatter)
 _LOGGER_NAME = "xpyd.proxy"
 logger = logging.getLogger(_LOGGER_NAME)
 logger.setLevel(logging.INFO)
-logger.addHandler(handler)
+if not logger.handlers:
+    logger.addHandler(handler)
 logger.propagate = False
 
 
@@ -792,6 +793,7 @@ class ProxyServer:
             decode_instances=self._all_decode,
             probe_interval=self.config.probe_interval_seconds,
             wait_timeout=self.config.wait_timeout_seconds,
+            heartbeat_interval=self.config.heartbeat_interval_seconds,
             registry=self.registry,
             aggregated_instances=self._all_aggregated,
         )
@@ -809,7 +811,10 @@ class ProxyServer:
         async def _check_readiness(request: Request, call_next):
             # Allow health/status/metrics endpoints through always
             path = request.url.path
-            if path in ("/health", "/ping", "/status", "/metrics"):
+            if (
+                path in ("/health", "/ping", "/status", "/metrics")
+                or path.startswith("/status/")
+            ):
                 return await call_next(request)
             if not discovery.is_ready:
                 return error_response("Waiting for backend nodes", PROXY_ERROR, 503)

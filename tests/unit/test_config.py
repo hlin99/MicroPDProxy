@@ -188,6 +188,7 @@ class TestProxyConfigFromYaml:
             startup:
               wait_timeout_seconds: 120
               probe_interval_seconds: 5
+              heartbeat_interval_seconds: 15
             health_check:
               enabled: true
               interval_seconds: 5.0
@@ -201,6 +202,7 @@ class TestProxyConfigFromYaml:
         assert cfg.roundrobin is True
         assert cfg.scheduling == "roundrobin"
         assert cfg.wait_timeout_seconds == 120
+        assert cfg.heartbeat_interval_seconds == 15
         assert cfg.health_check.enabled is True
 
     def test_from_yaml_env_override(self, tmp_path):

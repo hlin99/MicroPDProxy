@@ -53,6 +53,8 @@ When `xpyd` starts, the following sequence occurs:
 2. Start uvicorn (port opens immediately)
 3. Return 503 "waiting for backend nodes" for all business requests
 4. Background task: probe all configured nodes every <probe_interval_seconds>
+   and log the deployment mode and online P/D node counts every
+   <heartbeat_interval_seconds>
 5. As nodes respond healthy, add them to the scheduling pool
    Log: "[3/16 decode nodes ready]"
 6. Once ≥1 prefill + ≥1 decode are ready:

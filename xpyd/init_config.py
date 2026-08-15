@@ -37,6 +37,7 @@ first_token_source: "decode"
 startup:
   wait_timeout_seconds: 600
   probe_interval_seconds: 10
+  heartbeat_interval_seconds: 30
 
 # Health check configuration
 health_check:

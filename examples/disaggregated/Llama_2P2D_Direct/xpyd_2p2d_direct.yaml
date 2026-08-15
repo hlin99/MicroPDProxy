@@ -1,13 +1,29 @@
-# All addresses are loopback placeholders: prefill/decode lists are backend hosts; proxy host is port.
+# Start this proxy before any P/D node.  The `instances` form defers model
+# verification to background health probes, so offline nodes do not block startup.
 model: /workspace/Meta-Llama-3-8B-Instruct/
-prefill:
-  - 127.0.0.1:8100
-  - 127.0.0.1:8101
-decode:
-  - 127.0.0.1:8200
-  - 127.0.0.1:8201
+instances:
+  - address: 127.0.0.1:8100
+    role: prefill
+    model: /workspace/Meta-Llama-3-8B-Instruct/
+  - address: 127.0.0.1:8101
+    role: prefill
+    model: /workspace/Meta-Llama-3-8B-Instruct/
+  - address: 127.0.0.1:8200
+    role: decode
+    model: /workspace/Meta-Llama-3-8B-Instruct/
+  - address: 127.0.0.1:8201
+    role: decode
+    model: /workspace/Meta-Llama-3-8B-Instruct/
 port: 8868
 log_level: info
 scheduling: roundrobin
 disaggregated_mode: direct
 first_token_source: decode
+startup:
+  wait_timeout_seconds: 1200
+  probe_interval_seconds: 2
+  heartbeat_interval_seconds: 10
+health_check:
+  enabled: true
+  interval_seconds: 2
+  timeout_seconds: 2

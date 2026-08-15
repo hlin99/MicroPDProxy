@@ -77,3 +77,4 @@ openai_api_key: ""
 startup:
   wait_timeout_seconds: 600     # max wait for minimum nodes (default: 600s)
   probe_interval_seconds: 10    # health probe interval (default: 10s)
+  heartbeat_interval_seconds: 30 # periodic P/D online/offline status log

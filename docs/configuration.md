@@ -52,6 +52,7 @@ openai_api_key: ""              # env override: OPENAI_API_KEY
 startup:
   wait_timeout_seconds: 600     # max seconds to wait for 1 prefill + 1 decode
   probe_interval_seconds: 10    # health-probe interval during startup
+  heartbeat_interval_seconds: 30 # periodic P/D online/offline status log
 ```
 
 ### Field Details
@@ -76,6 +77,7 @@ startup:
 | `openai_api_key` | string | no | `""` | API key for OpenAI-compatible endpoints. Can also be set via `OPENAI_API_KEY` env var. |
 | `startup.wait_timeout_seconds` | integer | no | `600` | Maximum time (seconds) to wait for at least 1 prefill + 1 decode node during startup. |
 | `startup.probe_interval_seconds` | integer | no | `10` | Interval (seconds) between health probes during startup discovery. |
+| `startup.heartbeat_interval_seconds` | number | no | `30` | Interval between logs of the deployment mode and online P/D node counts. |
 
 ### ZMQ receiver token alignment
 

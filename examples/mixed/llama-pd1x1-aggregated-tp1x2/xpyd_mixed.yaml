@@ -1,0 +1,27 @@
+model: /workspace/Meta-Llama-3-8B-Instruct/
+scheduling: roundrobin
+
+models:
+  - name: disaggregated-model
+    prefill:
+      - 127.0.0.1:8100
+    decode:
+      - 127.0.0.1:8200
+    scheduler: roundrobin
+  - name: aggregated-model
+    aggregated:
+      - 127.0.0.1:8000
+      - 127.0.0.1:8001
+    scheduler: roundrobin
+
+port: 8868
+log_level: info
+first_token_source: decode
+startup:
+  wait_timeout_seconds: 1200
+  probe_interval_seconds: 2
+  heartbeat_interval_seconds: 10
+health_check:
+  enabled: true
+  interval_seconds: 2
+  timeout_seconds: 2

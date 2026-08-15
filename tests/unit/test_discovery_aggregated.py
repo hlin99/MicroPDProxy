@@ -3,10 +3,52 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from xpyd.discovery import NodeDiscovery
 
 
 class TestDiscoveryAggregatedReady:
+    def test_heartbeat_mode_uses_only_configured_roles(self):
+        disaggregated = NodeDiscovery(
+            prefill_instances=["10.0.0.1:8000"],
+            decode_instances=["10.0.0.2:8000"],
+        )
+        aggregated = NodeDiscovery(
+            prefill_instances=[],
+            decode_instances=[],
+            aggregated_instances=["10.0.0.3:8000"],
+        )
+
+        with patch("xpyd.discovery.logger.info") as log_info:
+            disaggregated._log_heartbeat_if_due()
+            assert log_info.call_args.args == (
+                "Node heartbeat | mode=%s | %s",
+                "disaggregated",
+                "P=0/1 online | D=0/1 online",
+            )
+
+            aggregated._log_heartbeat_if_due()
+            assert log_info.call_args.args == (
+                "Node heartbeat | mode=%s | %s",
+                "aggregated",
+                "aggregated=0/1 online",
+            )
+
+    def test_heartbeat_reports_online_role_counts(self):
+        d = NodeDiscovery(
+            prefill_instances=["10.0.0.1:8000", "10.0.0.2:8000"],
+            decode_instances=["10.0.0.3:8000"],
+        )
+        d.healthy_prefill.add("10.0.0.1:8000")
+
+        assert d._role_heartbeat(
+            "P", d.prefill_instances, d.healthy_prefill
+        ) == "P=1/2 online"
+        assert d._role_heartbeat(
+            "D", d.decode_instances, d.healthy_decode
+        ) == "D=0/1 online"
+
     def test_aggregated_only_is_ready(self):
         """All-aggregated deployment: is_ready=True when aggregated nodes are healthy."""
         d = NodeDiscovery(
