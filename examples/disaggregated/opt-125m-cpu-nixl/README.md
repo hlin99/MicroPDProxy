@@ -27,4 +27,5 @@ The lifecycle starts xPyD before either backend, checks HTTP 503 while the
 topology is incomplete, discovers both nodes, performs NIXL TCP inference,
 then validates prefill and decode loss and reconnection independently.
 `/status/instances` and the concise disaggregated heartbeat are checked.
-Runtime output is stored in the ignored `logs/` directory.
+Runtime output, including NIXL BUFFER telemetry required by NIXL v1.3, is
+stored in the ignored `logs/` directory.

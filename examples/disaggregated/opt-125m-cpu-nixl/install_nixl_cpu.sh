@@ -107,9 +107,19 @@ platform_version="$(
 )"
 python -m pip install --no-deps "nixl==${platform_version}"
 UCX_NET_DEVICES=all UCX_TLS=tcp python - <<'PY'
+import os
+from pathlib import Path
+import tempfile
+
 import nixl
 
-agent = nixl.nixl_agent("xpyd-cpu-check")
-assert agent is not None
-print("NIXL CPU/UCX initialization passed.")
+with tempfile.TemporaryDirectory(prefix="xpyd-nixl-telemetry-") as telemetry_dir:
+    os.environ["NIXL_TELEMETRY_ENABLE"] = "y"
+    os.environ["NIXL_TELEMETRY_DIR"] = telemetry_dir
+    agent = nixl.nixl_agent("xpyd-cpu-check")
+    assert agent is not None
+    assert (Path(telemetry_dir) / "xpyd-cpu-check").is_file()
+    del agent
+
+print("NIXL CPU/UCX and telemetry initialization passed.")
 PY
