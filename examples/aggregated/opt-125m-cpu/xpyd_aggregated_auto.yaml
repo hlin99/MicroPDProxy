@@ -1,0 +1,15 @@
+instances:
+  - address: 127.0.0.1:8000
+    role: aggregated
+# The served model name is auto-detected and its tokenizer is downloaded.
+port: 8868
+log_level: info
+scheduling: loadbalanced
+startup:
+  wait_timeout_seconds: 600
+  probe_interval_seconds: 1
+  heartbeat_interval_seconds: 10
+health_check:
+  enabled: true
+  interval_seconds: 1
+  timeout_seconds: 1

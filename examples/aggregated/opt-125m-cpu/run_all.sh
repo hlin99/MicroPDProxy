@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 BACKEND_ENDPOINT="${BACKEND_ENDPOINT:-http://127.0.0.1:8000}"
 LOG_DIR="${SCRIPT_DIR}/logs"
+LOCAL_CONFIG="${SCRIPT_DIR}/xpyd_aggregated.yaml"
+AUTO_CONFIG="${SCRIPT_DIR}/xpyd_aggregated_auto.yaml"
+AUTO_SUCCESS_CACHE="${LOG_DIR}/hf-auto-success"
+AUTO_FAILURE_CACHE="${LOG_DIR}/hf-auto-failure"
 PROXY_PID=""
 BACKEND_PID=""
 
@@ -53,6 +57,22 @@ wait_for_log_count() {
         }
         sleep 1
     done
+}
+
+start_proxy() {
+    local config=$1
+    shift
+    env CONFIG_FILE="${config}" "$@" \
+        bash "${SCRIPT_DIR}/start_proxy.sh" >>"${LOG_DIR}/proxy.log" 2>&1 &
+    PROXY_PID=$!
+    wait_for_url "${PROXY_ENDPOINT}/status/instances" "${PROXY_PID}"
+}
+
+stop_proxy() {
+    kill "${PROXY_PID}"
+    wait "${PROXY_PID}" 2>/dev/null || true
+    PROXY_PID=""
+    wait_for_port_close "${PROXY_ENDPOINT}/status/instances"
 }
 
 wait_for_instance_status() {
@@ -150,13 +170,12 @@ stop_backend() {
 trap cleanup EXIT INT TERM
 
 mkdir -p "${LOG_DIR}"
+rm -rf "${AUTO_SUCCESS_CACHE}" "${AUTO_FAILURE_CACHE}"
 : >"${LOG_DIR}/proxy.log"
 : >"${LOG_DIR}/vllm.log"
 
 echo "=== Phase 1: proxy-first startup with backend offline ==="
-bash "${SCRIPT_DIR}/start_proxy.sh" >"${LOG_DIR}/proxy.log" 2>&1 &
-PROXY_PID=$!
-wait_for_url "${PROXY_ENDPOINT}/status/instances" "${PROXY_PID}"
+start_proxy "${LOCAL_CONFIG}"
 wait_for_instance_status unhealthy
 assert_inference_status 503
 
@@ -176,6 +195,27 @@ start_backend
 wait_for_discovered_model
 wait_for_log_count "Node heartbeat | mode=aggregated | aggregated=1/1 online" 2
 bash "${SCRIPT_DIR}/smoke_test.sh"
+
+echo "=== Phase 5: automatic tokenizer download ==="
+stop_proxy
+start_proxy "${AUTO_CONFIG}" "HF_HOME=${AUTO_SUCCESS_CACHE}"
+wait_for_instance_status healthy
+wait_for_discovered_model
+wait_for_log_count \
+    "Loaded tokenizer for model 'facebook/opt-125m' from facebook/opt-125m" 1
+assert_inference_status 200
+
+echo "=== Phase 6: tokenizer download failure and round-robin fallback ==="
+stop_proxy
+start_proxy "${AUTO_CONFIG}" \
+    "HF_HOME=${AUTO_FAILURE_CACHE}" \
+    "HF_HUB_OFFLINE=1" \
+    "TRANSFORMERS_OFFLINE=1"
+wait_for_instance_status healthy
+wait_for_discovered_model
+wait_for_log_count \
+    "Falling back to roundrobin scheduling for this model." 1
+assert_inference_status 200
 
 grep -q "Node heartbeat | mode=aggregated | aggregated=0/1 online" \
     "${LOG_DIR}/proxy.log"
