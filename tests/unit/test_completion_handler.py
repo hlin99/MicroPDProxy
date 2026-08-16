@@ -519,7 +519,7 @@ class TestHandleCompletion:
 
         with (
             patch("xpyd.routes.completions.track_request_start", return_value=0),
-            patch("xpyd.routes.completions.track_request_end"),
+            patch("xpyd.routes.completions.track_request_end") as track_end,
         ):
             result = await handle_completion(
                 "/v1/completions", raw_request, server, is_chat=False
@@ -527,6 +527,7 @@ class TestHandleCompletion:
 
         assert isinstance(result, JSONResponse)
         assert result.status_code == 400
+        track_end.assert_called_once_with("/v1/completions", 0)
 
     @pytest.mark.asyncio
     async def test_missing_required_field(self, server):
@@ -535,7 +536,7 @@ class TestHandleCompletion:
 
         with (
             patch("xpyd.routes.completions.track_request_start", return_value=0),
-            patch("xpyd.routes.completions.track_request_end"),
+            patch("xpyd.routes.completions.track_request_end") as track_end,
         ):
             result = await handle_completion(
                 "/v1/completions", raw_request, server, is_chat=False
@@ -543,6 +544,7 @@ class TestHandleCompletion:
 
         assert isinstance(result, JSONResponse)
         assert result.status_code == 400
+        track_end.assert_called_once_with("/v1/completions", 0)
 
     @pytest.mark.asyncio
     async def test_no_available_instance(self, server):
@@ -558,7 +560,7 @@ class TestHandleCompletion:
 
         with (
             patch("xpyd.routes.completions.track_request_start", return_value=0),
-            patch("xpyd.routes.completions.track_request_end"),
+            patch("xpyd.routes.completions.track_request_end") as track_end,
             patch("xpyd.routes.completions.logger"),
         ):
             result = await handle_completion(
@@ -568,6 +570,36 @@ class TestHandleCompletion:
         assert isinstance(result, JSONResponse)
         assert result.status_code == 503
         server.exception_handler.assert_called_once()
+        track_end.assert_called_once_with("/v1/completions", 0)
+
+    @pytest.mark.asyncio
+    async def test_unknown_aggregated_model_ends_metrics(self, server):
+        raw_request = AsyncMock()
+        raw_request.json = AsyncMock(
+            return_value={
+                "model": "unknown-model",
+                "prompt": "hello",
+                "max_tokens": 1,
+            }
+        )
+        raw_request.headers = {}
+        raw_request.client = None
+
+        server._is_aggregated_model.return_value = True
+        server.schedule_aggregated.return_value = None
+        server.registry.get_registered_models.return_value = ["known-model"]
+
+        with (
+            patch("xpyd.routes.completions.track_request_start", return_value=0),
+            patch("xpyd.routes.completions.track_request_end") as track_end,
+        ):
+            result = await handle_completion(
+                "/v1/completions", raw_request, server, is_chat=False
+            )
+
+        assert isinstance(result, JSONResponse)
+        assert result.status_code == 404
+        track_end.assert_called_once_with("/v1/completions", 0)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("source", ["decode", "prefill"])

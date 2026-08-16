@@ -499,10 +499,12 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         try:
             request = await raw_request.json()
         except (json.JSONDecodeError, ValueError):
+            track_request_end(endpoint, _metrics_start)
             return error_response("Invalid JSON in request body", INVALID_REQUEST, 400)
 
         error_resp = validate_completion_request(request, is_chat)
         if error_resp:
+            track_request_end(endpoint, _metrics_start)
             return error_resp
 
         prefill_instance = None
@@ -586,6 +588,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 "No available instance",
                 extra={"endpoint": endpoint, "prompt_length": total_length, "model": requested_model},
             )
+            track_request_end(endpoint, _metrics_start)
             # Check for unknown model first to return a clean 404 without
             # triggering error-path side effects (logging, metrics, etc.)
             if requested_model and server.registry is not None:
@@ -952,6 +955,7 @@ async def _handle_aggregated_completion(
     )
 
     if instance is None:
+        track_request_end(endpoint, metrics_start)
         # Check for unknown model
         if model and server.registry is not None:
             known_models = server.registry.get_registered_models()
