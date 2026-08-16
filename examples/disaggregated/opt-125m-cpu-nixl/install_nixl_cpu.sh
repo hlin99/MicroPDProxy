@@ -38,6 +38,11 @@ python -m pip install "patchelf>=0.14.5"
 # The upstream installer uses the Git tag in its wheel filename glob. NIXL
 # tags carry a leading "v", while Python wheel versions do not.
 sed -i 's/f"nixl\*{NIXL_VERSION}\*\.whl"/"nixl*.whl"/' "${installer}"
+# Build only the transport used by this example. The default plugin set also
+# builds POSIX support and leaves auditwheel with an unavailable liburing.so.2.
+sed -i \
+    '/f"--wheel-dir={temp_wheel_dir}",/a\            "--config-settings=setup-args=-Denable_plugins=UCX",' \
+    "${installer}"
 NIXL_VERSION="${NIXL_VERSION}" python "${installer}"
 python - <<'PY'
 import nixl
