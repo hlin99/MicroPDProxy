@@ -17,5 +17,6 @@ pip install -e .
 ```
 
 The check starts xPyD before vLLM, verifies offline inference returns HTTP 503,
-discovers the backend, runs real inference, validates node loss, and confirms
+auto-detects the served model from the backend, exercises completion, chat,
+streaming, health, models, and metrics APIs, validates node loss, and confirms
 reconnection. Runtime output is stored in the ignored `logs/` directory.

@@ -1,9 +1,9 @@
-# The tokenizer is local so the proxy can start without the backend or network.
+# The local tokenizer lets the proxy start without the backend or network.
 model: /tmp/opt-125m
 instances:
   - address: 127.0.0.1:8000
     role: aggregated
-    model: facebook/opt-125m
+# The served model name is auto-detected from the backend's /v1/models endpoint.
 port: 8868
 log_level: info
 scheduling: roundrobin

@@ -193,7 +193,19 @@ class Proxy:
 
     def _is_aggregated_model(self, model: str) -> bool:
         """Check if all instances for a model are aggregated-role."""
-        return model in self.aggregated_instances and len(self.aggregated_instances[model]) > 0
+        return bool(Proxy._aggregated_instances_for_model(self, model))
+
+    def _aggregated_instances_for_model(self, model: str) -> list[str]:
+        """Return configured aggregated instances, including discovered models."""
+        if self.registry is not None:
+            discovered = [
+                info.address
+                for info in self.registry.get_all_instances()
+                if info.role == "aggregated" and info.model == model
+            ]
+            if discovered:
+                return discovered
+        return list(self.aggregated_instances.get(model, []))
 
     def schedule_aggregated(self, model: str, **kwargs) -> Optional[str]:
         """Schedule a aggregated instance for the given model.
@@ -204,9 +216,7 @@ class Proxy:
         Supports load-balanced, round-robin, consistent-hash, power-of-two,
         and cache-aware selection.
         """
-        if model not in self.aggregated_instances:
-            return None
-        instances = self.aggregated_instances[model]
+        instances = Proxy._aggregated_instances_for_model(self, model)
         if not instances:
             return None
 

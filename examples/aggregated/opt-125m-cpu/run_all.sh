@@ -82,6 +82,38 @@ raise SystemExit(
     done
 }
 
+wait_for_discovered_model() {
+    local deadline=$((SECONDS + 60))
+    until curl --silent --fail --max-time 2 \
+        "${PROXY_ENDPOINT}/v1/models" |
+        python -c '
+import json
+import sys
+
+models = json.load(sys.stdin)
+raise SystemExit(
+    0
+    if models == {
+        "object": "list",
+        "data": [{
+            "id": "facebook/opt-125m",
+            "object": "model",
+            "created": 0,
+            "owned_by": "system",
+        }],
+    }
+    else 1
+)
+'; do
+        (( SECONDS < deadline )) || {
+            echo "ERROR: proxy did not auto-detect facebook/opt-125m." >&2
+            curl --silent "${PROXY_ENDPOINT}/v1/models" >&2 || true
+            return 1
+        }
+        sleep 1
+    done
+}
+
 assert_inference_status() {
     local expected=$1 actual
     actual="$(
@@ -130,6 +162,8 @@ assert_inference_status 503
 
 echo "=== Phase 2: node discovery and inference ==="
 start_backend
+wait_for_discovered_model
+wait_for_log_count "Auto-detected model 'facebook/opt-125m' on 127.0.0.1:8000" 1
 wait_for_log_count "Node heartbeat | mode=aggregated | aggregated=1/1 online" 1
 bash "${SCRIPT_DIR}/smoke_test.sh"
 
@@ -139,6 +173,7 @@ assert_inference_status 503
 
 echo "=== Phase 4: node reconnection ==="
 start_backend
+wait_for_discovered_model
 wait_for_log_count "Node heartbeat | mode=aggregated | aggregated=1/1 online" 2
 bash "${SCRIPT_DIR}/smoke_test.sh"
 

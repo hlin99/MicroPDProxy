@@ -29,9 +29,22 @@ class TestIsAggregatedModel:
     def test_empty_aggregated_list_not_aggregated(self):
         proxy = MagicMock()
         proxy.aggregated_instances = {"qwen-2": []}
+        proxy.registry = None
         from xpyd.proxy import Proxy
 
         assert Proxy._is_aggregated_model(proxy, "qwen-2") is False
+
+    def test_auto_discovered_aggregated_model_detected(self):
+        from xpyd.proxy import Proxy
+
+        registry = InstanceRegistry()
+        registry.add("aggregated", "10.0.0.1:8000")
+        registry.update_model("10.0.0.1:8000", "qwen-2")
+        proxy = MagicMock()
+        proxy.aggregated_instances = {"": ["10.0.0.1:8000"]}
+        proxy.registry = registry
+
+        assert Proxy._is_aggregated_model(proxy, "qwen-2") is True
 
 
 class TestScheduleAggregated:
@@ -68,6 +81,26 @@ class TestScheduleAggregated:
 
         result = Proxy.schedule_aggregated(proxy, "nonexistent")
         assert result is None
+
+    def test_schedule_auto_discovered_aggregated_model(self):
+        from xpyd.proxy import Proxy
+        from xpyd.scheduler import RoundRobinSchedulingPolicy
+
+        reg = InstanceRegistry()
+        reg.add("aggregated", "10.0.0.3:8000")
+        reg.update_model("10.0.0.3:8000", "qwen-2")
+        reg.mark_healthy("10.0.0.3:8000")
+        proxy = MagicMock()
+        proxy.aggregated_instances = {"": ["10.0.0.3:8000"]}
+        proxy.registry = reg
+        proxy.scheduling_policy = RoundRobinSchedulingPolicy(registry=reg)
+        proxy.model_schedulers = {}
+        proxy._aggregated_rr_counters = {}
+        proxy._aggregated_instances_for_model = (
+            lambda model: Proxy._aggregated_instances_for_model(proxy, model)
+        )
+
+        assert Proxy.schedule_aggregated(proxy, "qwen-2") == "10.0.0.3:8000"
 
 
 class TestScheduleAggregatedCompletion:
