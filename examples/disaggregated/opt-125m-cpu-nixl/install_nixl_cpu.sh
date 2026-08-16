@@ -102,6 +102,10 @@ path.write_text(content)
 PY
 
 NIXL_VERSION="${NIXL_VERSION}" python "${installer}"
+platform_version="$(
+    python -c 'import importlib.metadata as m; print(m.version("nixl-cu12"))'
+)"
+python -m pip install --no-deps "nixl==${platform_version}"
 python - <<'PY'
 import nixl
 
