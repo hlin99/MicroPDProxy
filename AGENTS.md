@@ -1,5 +1,10 @@
 # Repository Guidelines
 
+> [!IMPORTANT]
+> **COMMIT IDENTITY AND ATTRIBUTION:** All commits must use
+> `Tony Lin <tony.lin@intel.com>`. Never include `Co-authored-by`, Copilot, or
+> any other agent attribution in commit messages.
+
 - Read related examples, documentation, and tests before modifying proxy behavior,
   configuration, or examples.
 - New P/D examples must support starting the proxy before the backends. Offline
@@ -23,5 +28,3 @@
   source rather than treating an older installed `xpyd` as current behavior.
 - Update relevant documentation and focused tests with configuration or behavior
   changes.
-- Commits use `Tony Lin <tony.lin@intel.com>` and must not include
-  `Co-authored-by`, Copilot, or other agent attribution.
