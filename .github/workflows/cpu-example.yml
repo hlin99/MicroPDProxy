@@ -86,10 +86,26 @@ jobs:
           name: disaggregated-opt-125m-cpu-nixl-1p1d-logs
           path: examples/disaggregated/opt-125m-cpu-nixl/logs/
 
-  disaggregated-2p1d:
-    name: Disaggregated OPT-125M 2P1D NIXL TCP
+  disaggregated-multi:
+    name: Disaggregated OPT-125M ${{ matrix.topology }} NIXL TCP
     runs-on: ubuntu-22.04
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - topology: 2P1D
+            config: xpyd_2p1d.yaml
+            prefill-count: 2
+            decode-count: 1
+          - topology: 1P2D
+            config: xpyd_1p2d.yaml
+            prefill-count: 1
+            decode-count: 2
+          - topology: 2P2D
+            config: xpyd_2p2d.yaml
+            prefill-count: 2
+            decode-count: 2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -115,14 +131,16 @@ jobs:
           bash examples/disaggregated/opt-125m-cpu-nixl/install_nixl_cpu.sh
       - name: Download OPT-125M
         run: bash examples/aggregated/opt-125m-cpu/download_model.sh
-      - name: Run 2P1D disaggregated CPU lifecycle test
+      - name: Run ${{ matrix.topology }} disaggregated CPU lifecycle test
         run: |
           export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
           bash examples/disaggregated/opt-125m-cpu-nixl/run_topology.sh \
-            xpyd_2p1d.yaml 2 1
+            "${{ matrix.config }}" \
+            "${{ matrix.prefill-count }}" \
+            "${{ matrix.decode-count }}"
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: disaggregated-opt-125m-cpu-nixl-2p1d-logs
+          name: disaggregated-opt-125m-cpu-nixl-${{ matrix.topology }}-logs
           path: examples/disaggregated/opt-125m-cpu-nixl/logs/

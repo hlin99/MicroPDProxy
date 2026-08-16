@@ -23,10 +23,12 @@ pip install -e .
 ./run_all.sh
 ```
 
-Run the 2P1D lifecycle with:
+Run a multi-node lifecycle with its matching configuration and node counts:
 
 ```bash
 ./run_topology.sh xpyd_2p1d.yaml 2 1
+./run_topology.sh xpyd_1p2d.yaml 1 2
+./run_topology.sh xpyd_2p2d.yaml 2 2
 ```
 
 The 1P1D lifecycle uses `run_all.sh`. Multi-node configurations use
