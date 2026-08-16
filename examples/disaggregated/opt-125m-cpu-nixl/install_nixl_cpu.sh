@@ -30,6 +30,10 @@ curl --fail --location --retry 3 \
     "https://raw.githubusercontent.com/vllm-project/vllm/v${VLLM_VERSION}/tools/install_nixl_from_source_ubuntu.py" \
     --output "${installer}"
 
+# Ubuntu 22.04 provides patchelf 0.14.3, while current auditwheel requires
+# at least 0.14.5. The venv binary takes precedence over the apt package.
+python -m pip install "patchelf>=0.14.5"
+
 # The upstream installer uses the Git tag in its wheel filename glob. NIXL
 # tags carry a leading "v", while Python wheel versions do not.
 sed -i 's/f"nixl\*{NIXL_VERSION}\*\.whl"/"nixl*.whl"/' "${installer}"
