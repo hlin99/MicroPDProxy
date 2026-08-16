@@ -2,7 +2,7 @@
 
 This example runs one prefill and one decode vLLM instance on the same Linux
 host. Both instances serve `facebook/opt-125m` on CPU, while NIXL transfers KV
-cache data through UCX over loopback TCP. It is the smallest real 1P1D
+cache data through UCX over TCP. It is the smallest real 1P1D
 counterpart to the aggregated OPT-125M CPU example.
 
 Standard GitHub-hosted Linux runners do not provide GPUs. NIXL therefore must

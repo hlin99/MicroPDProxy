@@ -106,7 +106,7 @@ platform_version="$(
     python -c 'import importlib.metadata as m; print(m.version("nixl-cu12"))'
 )"
 python -m pip install --no-deps "nixl==${platform_version}"
-python - <<'PY'
+UCX_NET_DEVICES=all UCX_TLS=tcp python - <<'PY'
 import nixl
 
 agent = nixl.nixl_agent("xpyd-cpu-check")
