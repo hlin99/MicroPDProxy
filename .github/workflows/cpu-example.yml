@@ -24,8 +24,8 @@ jobs:
         with:
           path: |
             ~/.cache/pip
-            /tmp/opt-125m
-          key: cpu-example-vllm-0.25.2.dev202607190821-opt-125m
+            /tmp/tokenizers/facebook/opt-125m
+          key: cpu-example-vllm-0.25.2.dev202607190821-tokenizers-opt-125m
       - name: Install xPyD and vLLM CPU
         run: |
           python -m venv .venv

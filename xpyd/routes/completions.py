@@ -67,6 +67,7 @@ def validate_completion_request(request: dict, is_chat: bool) -> JSONResponse | 
 
 def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[int, int, str]:
     """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
+    model = request.get("model", "")
     if is_chat:
         total_length = 0
         prompt_parts = []
@@ -75,13 +76,13 @@ def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[in
             if content is None:
                 continue
             if isinstance(content, str):
-                total_length += server.get_total_token_length(content)
+                total_length += server.get_total_token_length(content, model)
                 prompt_parts.append(content)
             elif isinstance(content, list):
                 for part in content:
                     if isinstance(part, dict) and part.get("type") == "text":
                         text = part.get("text", "")
-                        total_length += server.get_total_token_length(text)
+                        total_length += server.get_total_token_length(text, model)
                         prompt_parts.append(text)
         max_tokens = request.get("max_completion_tokens", 0)
         if max_tokens == 0:
@@ -89,7 +90,7 @@ def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[in
         prompt_text = " ".join(prompt_parts)
     else:
         prompt = request.get("prompt")
-        total_length = server.get_total_token_length(prompt)
+        total_length = server.get_total_token_length(prompt, model)
         max_tokens = request.get("max_tokens", 0)
         prompt_text = prompt if isinstance(prompt, str) else str(prompt)
     return total_length, max_tokens, prompt_text
@@ -152,12 +153,18 @@ def build_zmq_prepare_request(
 
 def tokenize_zmq_prompt(request: dict, is_chat: bool, server: Proxy) -> list[int]:
     """Tokenize the exact prompt used by the LMCache sender and receiver."""
+    tokenizer = server.get_tokenizer(request.get("model", ""))
+    if tokenizer is None:
+        raise ValueError(
+            "ZMQ prompt tokenization requires a tokenizer for model "
+            f"{request.get('model', '')!r}"
+        )
     if not is_chat:
         prompt = request["prompt"]
         return (
             list(prompt)
             if isinstance(prompt, list)
-            else server.tokenizer.encode(prompt)
+            else tokenizer.encode(prompt)
         )
 
     template_kwargs = dict(request.get("chat_template_kwargs") or {})
@@ -172,7 +179,7 @@ def tokenize_zmq_prompt(request: dict, is_chat: bool, server: Proxy) -> list[int
         template_kwargs["chat_template"] = request["chat_template"]
     if request.get("tools") is not None:
         template_kwargs["tools"] = request["tools"]
-    tokenized = server.tokenizer.apply_chat_template(
+    tokenized = tokenizer.apply_chat_template(
         request["messages"], **template_kwargs
     )
     if isinstance(tokenized, Mapping):
@@ -538,7 +545,14 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             )
         zmq_prompt_tokens = None
         if server.disaggregated_mode == "zmq":
-            zmq_prompt_tokens = tokenize_zmq_prompt(request, is_chat, server)
+            if server.get_tokenizer(requested_model) is None:
+                zmq_prompt_tokens = await server.tokenize_on_backend(
+                    request, is_chat
+                )
+            else:
+                zmq_prompt_tokens = tokenize_zmq_prompt(
+                    request, is_chat, server
+                )
             total_length = len(zmq_prompt_tokens)
         kv_prepare_request = build_kv_prepare_request(
             request, is_chat, server.disaggregated_mode,

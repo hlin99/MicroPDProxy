@@ -110,6 +110,8 @@ class TestProxyConfigValidation:
         assert cfg.roundrobin is False
         assert cfg.admin_api_key is None
         assert cfg.openai_api_key is None
+        assert cfg.tokenizer_path is None
+        assert cfg.scheduling == "loadbalanced"
 
 
 class TestProxyConfigFromArgs:
@@ -169,6 +171,19 @@ class TestProxyConfigFromYaml:
         assert cfg.model == "my-model"
         assert cfg.decode == ["10.0.0.1:8000"]
         assert cfg.port == 8000
+
+    def test_from_yaml_tokenizer_path(self, tmp_path):
+        p = tmp_path / "cfg.yaml"
+        p.write_text(
+            "tokenizer_path: /models/tokenizers\n"
+            "instances:\n"
+            "  - address: '10.0.0.1:8000'\n"
+            "    role: aggregated\n"
+            "    model: org/model\n"
+        )
+        cfg = ProxyConfig.from_yaml(str(p))
+        assert cfg.tokenizer_path == "/models/tokenizers"
+        assert cfg.scheduling == "loadbalanced"
 
     def test_from_yaml_full(self, tmp_path):
         import textwrap

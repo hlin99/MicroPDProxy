@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-MODEL_DIR="${MODEL_DIR:-/tmp/opt-125m}"
+MODEL_DIR="${MODEL_DIR:-/tmp/tokenizers/facebook/opt-125m}"
 MODEL_URL="${MODEL_URL:-https://github.com/LMCache/opt-125m/releases/download/v1.0/opt-125m.tar.gz}"
 
 configure_chat_template() {

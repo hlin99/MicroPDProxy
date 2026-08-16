@@ -26,8 +26,9 @@ def server():
     """Create a mock server with minimal attributes."""
     srv = MagicMock()
     srv.get_total_token_length = MagicMock(
-        side_effect=lambda x: len(x) if isinstance(x, str) else 0
+        side_effect=lambda x, model="": len(x) if isinstance(x, str) else 0
     )
+    srv.get_tokenizer = MagicMock(side_effect=lambda model="": srv.tokenizer)
     srv._is_aggregated_model = MagicMock(return_value=False)
     return srv
 
@@ -183,7 +184,9 @@ class TestExtractPromptInfo:
     def test_completion_token_ids(self, server):
         """Flat list of ints (already tokenized) should return its length."""
         server.get_total_token_length = MagicMock(
-            side_effect=lambda x: len(x) if isinstance(x, (str, list)) else 0
+            side_effect=lambda x, model="": (
+                len(x) if isinstance(x, (str, list)) else 0
+            )
         )
         total_length, _, _ = extract_prompt_info(
             {"prompt": [101, 102, 103]},

@@ -12,12 +12,14 @@ The decode node's response is returned to the client (streaming or
 non-streaming).
 """
 import argparse
+import asyncio
 import itertools
 import json
 import logging
 import os
 import sys
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
 import aiohttp
@@ -162,6 +164,7 @@ class Proxy:
                  registry: Optional[InstanceRegistry] = None,
                  aggregated_instances: Optional[dict[str, list[str]]] = None,
                  model_schedulers: Optional[dict[str, str]] = None,
+                 tokenizer_path: Optional[str] = None,
                  disaggregated_mode: str = "direct",
                  zmq_config=None):
         self.prefill_instances = prefill_instances
@@ -173,6 +176,12 @@ class Proxy:
         self.registry = registry
         self.aggregated_instances = aggregated_instances or {}
         self.model_schedulers = model_schedulers or {}
+        self.tokenizer_path = tokenizer_path
+        self._tokenizers: dict[str, Any] = {}
+        self._round_robin_models: set[str] = set()
+        self._round_robin_policy = RoundRobinSchedulingPolicy(
+            registry=registry
+        )
         self.disaggregated_mode = disaggregated_mode
         self.first_token_source = first_token_source
         self.zmq_config = zmq_config
@@ -189,7 +198,74 @@ class Proxy:
             else D_first_token_generator
         )
         self.d_first_token_generator_class = D_first_token_generator
-        self.tokenizer = AutoTokenizer.from_pretrained(model)
+        self.tokenizer = None
+
+    def ensure_tokenizer(self, model: str) -> bool:
+        """Load a model tokenizer or mark the model for round-robin fallback."""
+        if not model or model in self._tokenizers:
+            return bool(model and model in self._tokenizers)
+        if model in self._round_robin_models:
+            return False
+
+        source = model
+        local_only = False
+        if self.tokenizer_path:
+            root = Path(self.tokenizer_path).expanduser().resolve()
+            source_path = root.joinpath(*model.split("/")).resolve()
+            try:
+                source_path.relative_to(root)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid model name {model!r}: tokenizer directory must "
+                    f"remain under tokenizer_path {str(root)!r}."
+                ) from exc
+            if not source_path.is_dir():
+                raise ValueError(
+                    f"Tokenizer for model {model!r} was not found. Expected "
+                    f"directory: {source_path}. Set tokenizer_path to the "
+                    "parent directory whose model-named subdirectories "
+                    "contain Hugging Face tokenizer files."
+                )
+            source = str(source_path)
+            local_only = True
+
+        try:
+            tokenizer = AutoTokenizer.from_pretrained(
+                source,
+                local_files_only=local_only,
+            )
+        except Exception as exc:
+            if self.tokenizer_path:
+                raise ValueError(
+                    f"Failed to load tokenizer for model {model!r} from "
+                    f"{source!r}: {exc}. Verify that tokenizer_path contains "
+                    "a model-named subdirectory with valid Hugging Face "
+                    "tokenizer files."
+                ) from exc
+            self._round_robin_models.add(model)
+            logger.warning(
+                "Unable to download tokenizer for model %r: %s. "
+                "Falling back to roundrobin scheduling for this model.",
+                model,
+                exc,
+            )
+            return False
+
+        self._tokenizers[model] = tokenizer
+        if self.tokenizer is None:
+            self.tokenizer = tokenizer
+        logger.info("Loaded tokenizer for model %r from %s", model, source)
+        return True
+
+    def get_tokenizer(self, model: str = ""):
+        """Return the tokenizer loaded for a model, if available."""
+        if model:
+            return self.__dict__.get("_tokenizers", {}).get(model)
+        return self.__dict__.get("tokenizer")
+
+    def uses_round_robin_fallback(self, model: str) -> bool:
+        """Return whether tokenizer loading forced round-robin for a model."""
+        return model in self.__dict__.get("_round_robin_models", set())
 
     def _is_aggregated_model(self, model: str) -> bool:
         """Check if all instances for a model are aggregated-role."""
@@ -230,7 +306,11 @@ class Proxy:
 
         # Determine scheduler strategy for this model
         # Fallback chain: model-level → global policy type → load_balanced
-        strategy = self.model_schedulers.get(model, "")
+        strategy = (
+            "roundrobin"
+            if Proxy.uses_round_robin_fallback(self, model)
+            else self.model_schedulers.get(model, "")
+        )
         strategy = {
             "load_balanced": "loadbalanced",
             "round_robin": "roundrobin",
@@ -319,7 +399,7 @@ class Proxy:
             "registry": self.registry,
         }
         if strategy == "cache_aware":
-            options["tokenizer"] = self.tokenizer
+            options["tokenizer"] = Proxy.get_tokenizer(self, model)
         policy = default_registry.create(strategy, **options)
         self._aggregated_policies[model] = policy
         return policy
@@ -427,7 +507,12 @@ class Proxy:
                  max_tokens: Optional[int] = None,
                  **kwargs) -> Optional[str]:
         model = kwargs.pop("model", "")
-        return self.scheduling_policy.schedule(
+        policy = (
+            self._round_robin_policy
+            if Proxy.uses_round_robin_fallback(self, model)
+            else self.scheduling_policy
+        )
+        return policy.schedule(
             cycler, is_prompt, request_len, max_tokens, model=model, **kwargs,
         )
 
@@ -435,16 +520,108 @@ class Proxy:
                             prefill_instance: Optional[str] = None,
                             decode_instance: Optional[str] = None,
                             req_len: Optional[int] = None) -> None:
+        instances = [
+            instance
+            for instance in (prefill_instance, decode_instance)
+            if instance
+        ]
+        if (
+            self.registry is not None
+            and instances
+            and all(
+                Proxy.uses_round_robin_fallback(
+                    self,
+                    self.registry.get_instance_info(instance).model
+                )
+                for instance in instances
+            )
+        ):
+            return
         self.scheduling_policy.schedule_completion(
             prefill_instance=prefill_instance,
             decode_instance=decode_instance,
             req_len=req_len)
 
-    def get_total_token_length(self, prompt: Any) -> int:
+    def get_total_token_length(self, prompt: Any, model: str = "") -> int:
         """Compute total token length — delegates to :func:`xpyd.utils.get_total_token_length`."""
         from xpyd.utils import get_total_token_length as _get_total_token_length
 
-        return _get_total_token_length(self.tokenizer, prompt)
+        tokenizer = Proxy.get_tokenizer(self, model)
+        if tokenizer is None:
+            return 0
+        return _get_total_token_length(tokenizer, prompt)
+
+    async def tokenize_on_backend(
+        self,
+        request: dict,
+        is_chat: bool,
+    ) -> list[int]:
+        """Tokenize through a healthy prefill node when no local tokenizer exists."""
+        model = request.get("model", "")
+        instances = (
+            self.registry.get_available_instances("prefill", model=model)
+            if self.registry is not None
+            else self.prefill_instances
+        )
+        if not instances:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No prefill instance can tokenize model {model!r}",
+            )
+
+        if is_chat:
+            allowed = {
+                "model",
+                "messages",
+                "add_generation_prompt",
+                "continue_final_message",
+                "chat_template",
+                "chat_template_kwargs",
+                "tools",
+            }
+            payload = {
+                key: value
+                for key, value in request.items()
+                if key in allowed
+            }
+            continue_final_message = request.get(
+                "continue_final_message", False
+            )
+            payload["add_generation_prompt"] = request.get(
+                "add_generation_prompt", not continue_final_message
+            )
+        else:
+            prompt = request.get("prompt")
+            if isinstance(prompt, list):
+                return list(prompt)
+            payload = {"model": model, "prompt": prompt}
+
+        url = f"http://{instances[0]}/tokenize"
+        try:
+            async with aiohttp.ClientSession(
+                timeout=AIOHTTP_TIMEOUT
+            ) as session, session.post(url, json=payload) as response:
+                data = await response.json()
+                if response.status != 200:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=(
+                            f"Backend tokenizer returned HTTP "
+                            f"{response.status}: {data}"
+                        ),
+                    )
+        except aiohttp.ClientError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to tokenize through {url}: {exc}",
+            ) from exc
+        tokens = data.get("tokens")
+        if not isinstance(tokens, list):
+            raise HTTPException(
+                status_code=502,
+                detail=f"Backend tokenizer at {url} returned no tokens",
+            )
+        return tokens
 
     def exception_handler(self, prefill_instance: Optional[str] = None, decode_instance: Optional[str] = None, req_len: Optional[int] = None) -> None:
         if prefill_instance or decode_instance:
@@ -777,9 +954,15 @@ class ProxyServer:
             registry=self.registry,
             aggregated_instances=aggregated_instances,
             model_schedulers=model_scheduler_config,
+            tokenizer_path=config.tokenizer_path,
             disaggregated_mode=config.disaggregated_mode,
             zmq_config=config.zmq,
         )
+        configured_models = self.registry.get_registered_models()
+        if not configured_models and config.model:
+            configured_models = [config.model]
+        for model_name in configured_models:
+            self.proxy_instance.ensure_tokenizer(model_name)
 
     def verify_model_config(self, instances: list, model: str) -> None:
         for instance in instances:
@@ -806,6 +989,9 @@ class ProxyServer:
             heartbeat_interval=self.config.heartbeat_interval_seconds,
             registry=self.registry,
             aggregated_instances=self._all_aggregated,
+            on_model_discovered=lambda model: asyncio.to_thread(
+                self.proxy_instance.ensure_tokenizer, model
+            ),
         )
 
         app = FastAPI()
