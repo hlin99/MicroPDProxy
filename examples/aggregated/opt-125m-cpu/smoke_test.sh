@@ -34,8 +34,8 @@ assert output["choices"][0]["finish_reason"] == "length", output
 assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 
-chat="$(
-    curl --fail-with-body --silent --show-error \
+chat_result="$(
+    curl --silent --show-error --write-out $'\n%{http_code}' \
         "${PROXY_ENDPOINT}/v1/chat/completions" \
         -H "Content-Type: application/json" \
         -d "{
@@ -46,6 +46,12 @@ chat="$(
             \"temperature\": 0
         }"
 )"
+chat="${chat_result%$'\n'*}"
+chat_status="${chat_result##*$'\n'}"
+if [[ "${chat_status}" != "200" ]]; then
+    echo "ERROR: chat completion returned HTTP ${chat_status}: ${chat}" >&2
+    exit 1
+fi
 
 python -c '
 import json
