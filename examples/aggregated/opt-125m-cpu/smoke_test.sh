@@ -4,7 +4,6 @@ set -euo pipefail
 
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 MODEL="facebook/opt-125m"
-CHAT_TEMPLATE="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content']}}{% if (loop.last and add_generation_prompt) or not loop.last %}{{ '<|im_end|>' + '\n'}}{% endif %}{% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
 completion="$(
     curl --fail-with-body --silent --show-error \
@@ -41,7 +40,6 @@ chat_result="$(
         -d "{
             \"model\": \"${MODEL}\",
             \"messages\": [{\"role\": \"user\", \"content\": \"Say hello\"}],
-            \"chat_template\": $(python -c 'import json, sys; print(json.dumps(sys.argv[1]))' "${CHAT_TEMPLATE}"),
             \"max_tokens\": 4,
             \"temperature\": 0
         }"
