@@ -1,9 +1,9 @@
 # OPT-125M disaggregated CPU/NIXL TCP example
 
-This example runs one prefill and one decode vLLM instance on the same Linux
-host. Both instances serve `facebook/opt-125m` on CPU, while NIXL transfers KV
-cache data through UCX over TCP. It is the smallest real 1P1D
-counterpart to the aggregated OPT-125M CPU example.
+This example runs real 1P1D and multi-node prefill/decode topologies on the
+same Linux host. Every instance serves `facebook/opt-125m` on CPU, while NIXL
+transfers KV cache data through UCX over TCP. The 1P1D topology is the smallest
+disaggregated counterpart to the aggregated OPT-125M CPU example.
 
 Standard GitHub-hosted Linux runners do not provide GPUs. NIXL therefore must
 be built with UCX from source instead of using its CUDA-oriented PyPI quick
@@ -23,9 +23,18 @@ pip install -e .
 ./run_all.sh
 ```
 
-The lifecycle starts xPyD before either backend, checks HTTP 503 while the
-topology is incomplete, discovers both nodes, performs NIXL TCP inference,
-then validates prefill and decode loss and reconnection independently.
+Run the 2P1D lifecycle with:
+
+```bash
+./run_topology.sh xpyd_2p1d.yaml 2 1
+```
+
+The 1P1D lifecycle uses `run_all.sh`. Multi-node configurations use
+`run_topology.sh <config> <prefill-count> <decode-count>`. Both start xPyD
+before the backends, check HTTP 503 while the topology is incomplete, discover
+every node, perform NIXL TCP inference, then validate prefill and decode loss
+and reconnection independently. Multi-node tests also inspect per-instance
+metrics to ensure round-robin requests exercised every configured node.
 `/status/instances` and the concise disaggregated heartbeat are checked.
 Runtime output, including NIXL BUFFER telemetry required by NIXL v1.3, is
 stored in the ignored `logs/` directory.
