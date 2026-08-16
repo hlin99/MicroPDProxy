@@ -50,6 +50,9 @@ xpyd proxy --model my-model \
 The [aggregated OPT-125M CPU example](examples/aggregated/opt-125m-cpu/) and
 [disaggregated 1P1D NIXL TCP variant](examples/disaggregated/opt-125m-cpu-nixl/)
 validate proxy-first startup and real vLLM lifecycles on GitHub-hosted runners.
+For local GPU validation, the [GPU integration suite](tests/gpu/) wraps the
+aggregated, disaggregated, mixed, LMCache, and NIXL examples behind one command:
+`bash tests/gpu/run.sh`.
 
 ## License
 

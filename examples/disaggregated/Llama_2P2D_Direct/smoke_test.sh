@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-MODEL="/workspace/Meta-Llama-3-8B-Instruct/"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-/workspace/Meta-Llama-3-8B-Instruct/}"
 
 for request in 1 2 3 4; do
     response=$(
@@ -10,7 +10,7 @@ for request in 1 2 3 4; do
             http://127.0.0.1:8868/v1/completions \
             -H "Content-Type: application/json" \
             -d "{
-                \"model\": \"${MODEL}\",
+                \"model\": \"${SERVED_MODEL_NAME}\",
                 \"prompt\": \"Reply with the word smoke for request ${request}.\",
                 \"max_tokens\": 4,
                 \"temperature\": 0

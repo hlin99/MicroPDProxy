@@ -3,6 +3,7 @@
 set -euo pipefail
 
 MODEL="${MODEL:-/workspace/Meta-Llama-3-8B-Instruct/}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-/workspace/Meta-Llama-3-8B-Instruct/}"
 BASE_PORT="${BASE_PORT:-8000}"
 PIDS=()
 
@@ -23,6 +24,7 @@ for gpu in 0 1 2 3; do
     echo "Starting Llama instance on GPU ${gpu}, port ${port}"
     PYTHONUNBUFFERED=1 CUDA_VISIBLE_DEVICES="${gpu}" \
         vllm serve "${MODEL}" \
+        --served-model-name "${SERVED_MODEL_NAME}" \
         --port "${port}" \
         --no-enable-prefix-caching &
     PIDS+=("$!")

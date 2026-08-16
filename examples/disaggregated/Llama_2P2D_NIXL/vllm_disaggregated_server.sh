@@ -3,6 +3,7 @@
 set -euo pipefail
 
 MODEL="${MODEL:-/workspace/Meta-Llama-3-8B-Instruct/}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-/workspace/Meta-Llama-3-8B-Instruct/}"
 PIDS=()
 
 cleanup() {
@@ -35,6 +36,7 @@ start_instance() {
     UCX_NET_DEVICES=all \
     VLLM_NIXL_SIDE_CHANNEL_PORT="${side_channel_port}" \
         vllm serve "${MODEL}" \
+        --served-model-name "${SERVED_MODEL_NAME}" \
         --port "${http_port}" \
         --enforce-eager \
         --enable-request-id-headers \

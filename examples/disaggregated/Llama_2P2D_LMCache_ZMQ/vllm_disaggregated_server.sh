@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL="${MODEL:-/workspace/Meta-Llama-3-8B-Instruct/}"
+SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-/workspace/Meta-Llama-3-8B-Instruct/}"
 PIDS=()
 
 cleanup() {
@@ -43,6 +44,7 @@ start_instance() {
     VLLM_ENABLE_V1_MULTIPROCESSING=1 \
     VLLM_WORKER_MULTIPROC_METHOD=spawn \
         vllm serve "${MODEL}" \
+        --served-model-name "${SERVED_MODEL_NAME}" \
         --port "${http_port}" \
         --enforce-eager \
         --no-enable-prefix-caching \
