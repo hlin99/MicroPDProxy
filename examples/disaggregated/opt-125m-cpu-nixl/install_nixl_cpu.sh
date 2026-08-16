@@ -60,20 +60,29 @@ content = content.replace(
     """    wheel_extract_dir = tempfile.mkdtemp(prefix="nixl-wheel-")
     with zipfile.ZipFile(unrepaired_wheel) as wheel:
         wheel.extractall(wheel_extract_dir)
+    internal_libraries = glob.glob(
+        os.path.join(
+            wheel_extract_dir,
+            ".*.mesonpy.libs",
+            "**",
+            "*.so*",
+        ),
+        recursive=True,
+    )
     internal_lib_dirs = sorted({
         os.path.dirname(library)
-        for library in glob.glob(
-            os.path.join(
-                wheel_extract_dir,
-                ".*.mesonpy.libs",
-                "**",
-                "*.so*",
-            ),
-            recursive=True,
-        )
+        for library in internal_libraries
     })
     if not internal_lib_dirs:
         raise RuntimeError("NIXL wheel did not contain internal shared libraries")
+    for library in internal_libraries:
+        soname = subprocess.check_output(
+            ["patchelf", "--print-soname", library],
+            text=True,
+        ).strip()
+        soname_path = os.path.join(os.path.dirname(library), soname)
+        if soname and not os.path.exists(soname_path):
+            os.symlink(os.path.basename(library), soname_path)
     build_env["LD_LIBRARY_PATH"] = ":".join(
         internal_lib_dirs + [build_env.get("LD_LIBRARY_PATH", "")]
     ).strip(":")
