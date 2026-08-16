@@ -47,6 +47,9 @@ xpyd proxy --model my-model \
 
 📖 **[Full Guide →](docs/guide.md)** | 💡 **[Examples →](examples/)** | 🏗️ **[Contributing →](CONTRIBUTING.md)**
 
+The [OPT-125M CPU example](examples/aggregated/opt-125m-cpu/) validates
+proxy-first startup and a real vLLM lifecycle on a GitHub-hosted runner.
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
