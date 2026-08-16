@@ -1,0 +1,47 @@
+name: CPU example
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: cpu-example-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aggregated:
+    name: Aggregated OPT-125M
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            /tmp/opt-125m
+          key: cpu-example-vllm-0.25.2.dev202607190821-opt-125m
+      - name: Install xPyD and vLLM CPU
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e .
+          PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
+            bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
+      - name: Download OPT-125M
+        run: bash examples/aggregated/opt-125m-cpu/download_model.sh
+      - name: Run aggregated CPU lifecycle test
+        run: |
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/aggregated/opt-125m-cpu/run_all.sh
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggregated-opt-125m-cpu-logs
+          path: examples/aggregated/opt-125m-cpu/logs/
