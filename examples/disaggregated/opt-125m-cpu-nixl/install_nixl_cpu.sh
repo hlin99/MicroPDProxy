@@ -17,6 +17,7 @@ if ! compgen -G "${WHEELS_CACHE_HOME}/nixl*.whl" >/dev/null; then
         cmake \
         libtool \
         libtool-bin \
+        liburing-dev \
         meson \
         ninja-build \
         patchelf \
