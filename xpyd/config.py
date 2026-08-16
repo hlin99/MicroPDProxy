@@ -140,6 +140,7 @@ class ProxyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = ""
+    tokenizer_path: Optional[str] = None
     prefill: List[str] = []
     decode: List[str] = []
     instances: Optional[List[InstanceEntry]] = None
@@ -426,6 +427,7 @@ class ProxyConfig(BaseModel):
         # Argparse defaults — used to detect whether user explicitly set a value.
         _arg_defaults: Dict[str, Any] = {
             "model": None,
+            "tokenizer_path": None,
             "prefill": None,
             "decode": None,
             "port": 8000,

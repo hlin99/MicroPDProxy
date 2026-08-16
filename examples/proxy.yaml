@@ -10,7 +10,8 @@
 # ============================================================
 # Server
 # ============================================================
-model: /path/to/model           # required — path to HF model or tokenizer
+model: my-model                 # required in legacy single-model mode
+# tokenizer_path: /models/tokenizers  # optional local root; my-model/ must exist
 port: 8868                      # proxy listen port (default: 8000)
 log_level: warning              # debug | info | warning | error
 

@@ -9,9 +9,10 @@ prefill and one decode node are ready.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, Awaitable, Callable, List, Optional, Set
 
 import aiohttp
 
@@ -43,6 +44,9 @@ class NodeDiscovery:
         heartbeat_interval: float = 30.0,
         registry: Optional["InstanceRegistry"] = None,
         aggregated_instances: Optional[List[str]] = None,
+        on_model_discovered: Optional[
+            Callable[[str], Awaitable[None] | None]
+        ] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -51,6 +55,7 @@ class NodeDiscovery:
         self.wait_timeout = wait_timeout
         self.heartbeat_interval = heartbeat_interval
         self.registry = registry
+        self.on_model_discovered = on_model_discovered
 
         self.healthy_prefill: Set[str] = set()
         self.healthy_decode: Set[str] = set()
@@ -77,7 +82,7 @@ class NodeDiscovery:
         if task.cancelled():
             return
         exc = task.exception()
-        if isinstance(exc, DiscoveryTimeout):
+        if exc is not None:
             logger.critical("Discovery failed: %s", exc)
             loop = asyncio.get_event_loop()
             loop.stop()
@@ -241,6 +246,7 @@ class NodeDiscovery:
                 return  # model already set — no need to probe
         except KeyError:
             return  # instance not in registry
+        detected_model = ""
         try:
             models_url = f"http://{instance}/v1/models"
             async with session.get(models_url) as resp:
@@ -251,11 +257,7 @@ class NodeDiscovery:
                         model_name = models_data[0].get("id", "")
                         if model_name:
                             self.registry.update_model(instance, model_name)
-                            logger.info(
-                                "Auto-detected model %r on %s",
-                                model_name,
-                                instance,
-                            )
+                            detected_model = model_name
                         else:
                             logger.debug(
                                 "Empty model id from /v1/models on %s",
@@ -273,4 +275,15 @@ class NodeDiscovery:
         except Exception:
             logger.debug(
                 "Failed to probe /v1/models on %s", instance
+            )
+            return
+        if detected_model:
+            if self.on_model_discovered is not None:
+                result = self.on_model_discovered(detected_model)
+                if inspect.isawaitable(result):
+                    await result
+            logger.info(
+                "Auto-detected model %r on %s",
+                detected_model,
+                instance,
             )

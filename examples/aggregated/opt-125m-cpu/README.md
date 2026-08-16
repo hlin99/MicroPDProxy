@@ -17,5 +17,10 @@ pip install -e .
 ```
 
 The check starts xPyD before vLLM, verifies offline inference returns HTTP 503,
-discovers the backend, runs real inference, validates node loss, and confirms
-reconnection. Runtime output is stored in the ignored `logs/` directory.
+auto-detects the served model from the backend, exercises completion, chat,
+streaming, health, models, and metrics APIs, validates node loss, and confirms
+reconnection. It then uses an isolated Hugging Face cache to verify a real
+automatic tokenizer download, restarts with another empty cache in offline
+mode, and confirms inference continues after the tokenizer load warning and
+round-robin fallback. Runtime output is stored in the ignored `logs/`
+directory.

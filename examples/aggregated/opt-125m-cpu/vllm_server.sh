@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-MODEL_DIR="${MODEL_DIR:-/tmp/opt-125m}"
+MODEL_DIR="${MODEL_DIR:-/tmp/tokenizers/facebook/opt-125m}"
 PORT="${PORT:-8000}"
 
 export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-lo}"

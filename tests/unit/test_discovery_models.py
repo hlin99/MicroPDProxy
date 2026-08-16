@@ -47,6 +47,53 @@ class TestProbeModels:
         assert info.model == "llama-3"
 
     @pytest.mark.asyncio()
+    async def test_probe_models_notifies_model_callback(self, registry):
+        callback = AsyncMock()
+        discovery = NodeDiscovery(
+            prefill_instances=["10.0.0.1:8000"],
+            decode_instances=[],
+            registry=registry,
+            on_model_discovered=callback,
+        )
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={"data": [{"id": "org/model"}]}
+        )
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        await discovery._probe_models(mock_session, "10.0.0.1:8000")
+
+        callback.assert_awaited_once_with("org/model")
+
+    @pytest.mark.asyncio()
+    async def test_probe_models_propagates_callback_failure(self, registry):
+        callback = AsyncMock(side_effect=ValueError("bad tokenizer path"))
+        discovery = NodeDiscovery(
+            prefill_instances=["10.0.0.1:8000"],
+            decode_instances=[],
+            registry=registry,
+            on_model_discovered=callback,
+        )
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(
+            return_value={"data": [{"id": "org/model"}]}
+        )
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+
+        with pytest.raises(ValueError, match="bad tokenizer path"):
+            await discovery._probe_models(
+                mock_session, "10.0.0.1:8000"
+            )
+
+    @pytest.mark.asyncio()
     async def test_probe_models_non_200_graceful(self, discovery, registry):
         """_probe_models handles non-200 response gracefully without updating."""
         mock_resp = AsyncMock()

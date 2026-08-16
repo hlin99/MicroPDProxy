@@ -12,6 +12,11 @@ _TEMPLATE = """\
 # Required: model name served by this proxy
 model: "my-model"
 
+# Optional: local tokenizer root. Model "org/name" is loaded from
+# "<tokenizer_path>/org/name/". Without this setting, xPyD downloads the
+# tokenizer and falls back to roundrobin if the download fails.
+# tokenizer_path: "/models/tokenizers"
+
 # Required: at least one decode instance
 # Can be a flat list or topology dict
 decode:

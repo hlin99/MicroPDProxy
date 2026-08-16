@@ -1,9 +1,7 @@
-# facebook/opt-125m resolves to /tmp/tokenizers/facebook/opt-125m.
-tokenizer_path: /tmp/tokenizers
 instances:
   - address: 127.0.0.1:8000
     role: aggregated
-# The served model name is auto-detected from the backend's /v1/models endpoint.
+# The served model name is auto-detected and its tokenizer is downloaded.
 port: 8868
 log_level: info
 scheduling: loadbalanced

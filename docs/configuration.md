@@ -5,7 +5,7 @@
 MicroDisaggregatedProxy uses YAML-based configuration as the primary way to define proxy
 behavior. YAML provides a structured, readable format that scales better than
 CLI arguments as the number of configuration options grows. A single YAML file
-captures the entire proxy topology — model path, node addresses, tensor/data
+captures the entire proxy topology — model names, tokenizer source, node addresses, tensor/data
 parallelism parameters, scheduling policy, and authentication — making
 deployments reproducible and version-controllable.
 
@@ -17,7 +17,9 @@ Below is the complete schema with every supported field.
 # MicroDisaggregatedProxy Configuration
 
 # Server
-model: /path/to/model           # required
+model: my-model                # required in legacy single-model mode
+# Optional local root; model "org/name" maps to "<root>/org/name/"
+# tokenizer_path: /models/tokenizers
 port: 8000                      # default: 8000
 log_level: warning              # debug | info | warning | error
 
@@ -59,7 +61,8 @@ startup:
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `model` | string | **yes** | — | Path to the model directory or tokenizer. Used by the proxy to validate requests. |
+| `model` | string | single-model only | — | Served model name in legacy single-model configuration. |
+| `tokenizer_path` | string | no | — | Local tokenizer root. Model `org/name` must exist at `<tokenizer_path>/org/name/`. |
 | `port` | integer | no | `8000` | TCP port the proxy listens on. |
 | `log_level` | string | no | `warning` | Logging verbosity. One of `debug`, `info`, `warning`, `error`. |
 | `prefill.nodes` | list[string] | **yes** | — | Addresses of prefill backend nodes in `"ip:port"` format. |
@@ -78,6 +81,22 @@ startup:
 | `startup.wait_timeout_seconds` | integer | no | `600` | Maximum time (seconds) to wait for at least 1 prefill + 1 decode node during startup. |
 | `startup.probe_interval_seconds` | integer | no | `10` | Interval (seconds) between health probes during startup discovery. |
 | `startup.heartbeat_interval_seconds` | number | no | `30` | Interval between logs of the deployment mode and online P/D node counts. |
+
+### Tokenizer loading and scheduler fallback
+
+When `tokenizer_path` is set, xPyD strictly loads each model from its
+model-named subdirectory. For example, model `facebook/opt-125m` must have
+valid Hugging Face tokenizer files in
+`<tokenizer_path>/facebook/opt-125m/`. A missing directory or invalid
+tokenizer is a configuration error and stops the proxy with the expected
+path in the error message.
+
+Without `tokenizer_path`, xPyD downloads each discovered model's tokenizer
+through `AutoTokenizer.from_pretrained()`. Successful loads use the configured
+scheduler, which defaults to `loadbalanced`. A failed download emits a warning
+and downgrades only that model to `roundrobin`. P/D modes continue operating;
+when ZMQ needs exact token IDs, xPyD uses a healthy prefill backend's
+`/tokenize` endpoint.
 
 ### ZMQ receiver token alignment
 

@@ -6,6 +6,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 BACKEND_ENDPOINT="${BACKEND_ENDPOINT:-http://127.0.0.1:8000}"
 LOG_DIR="${SCRIPT_DIR}/logs"
+LOCAL_CONFIG="${SCRIPT_DIR}/xpyd_aggregated.yaml"
+AUTO_CONFIG="${SCRIPT_DIR}/xpyd_aggregated_auto.yaml"
+AUTO_SUCCESS_CACHE="${LOG_DIR}/hf-auto-success"
+AUTO_FAILURE_CACHE="${LOG_DIR}/hf-auto-failure"
 PROXY_PID=""
 BACKEND_PID=""
 
@@ -55,6 +59,22 @@ wait_for_log_count() {
     done
 }
 
+start_proxy() {
+    local config=$1
+    shift
+    env CONFIG_FILE="${config}" "$@" \
+        bash "${SCRIPT_DIR}/start_proxy.sh" >>"${LOG_DIR}/proxy.log" 2>&1 &
+    PROXY_PID=$!
+    wait_for_url "${PROXY_ENDPOINT}/status/instances" "${PROXY_PID}"
+}
+
+stop_proxy() {
+    kill "${PROXY_PID}"
+    wait "${PROXY_PID}" 2>/dev/null || true
+    PROXY_PID=""
+    wait_for_port_close "${PROXY_ENDPOINT}/status/instances"
+}
+
 wait_for_instance_status() {
     local expected=$1 deadline=$((SECONDS + 60))
     until curl --silent --fail --max-time 2 \
@@ -76,6 +96,38 @@ raise SystemExit(
         (( SECONDS < deadline )) || {
             echo "ERROR: backend did not become ${expected}." >&2
             curl --silent "${PROXY_ENDPOINT}/status/instances" >&2 || true
+            return 1
+        }
+        sleep 1
+    done
+}
+
+wait_for_discovered_model() {
+    local deadline=$((SECONDS + 60))
+    until curl --silent --fail --max-time 2 \
+        "${PROXY_ENDPOINT}/v1/models" |
+        python -c '
+import json
+import sys
+
+models = json.load(sys.stdin)
+raise SystemExit(
+    0
+    if models == {
+        "object": "list",
+        "data": [{
+            "id": "facebook/opt-125m",
+            "object": "model",
+            "created": 0,
+            "owned_by": "system",
+        }],
+    }
+    else 1
+)
+'; do
+        (( SECONDS < deadline )) || {
+            echo "ERROR: proxy did not auto-detect facebook/opt-125m." >&2
+            curl --silent "${PROXY_ENDPOINT}/v1/models" >&2 || true
             return 1
         }
         sleep 1
@@ -118,18 +170,19 @@ stop_backend() {
 trap cleanup EXIT INT TERM
 
 mkdir -p "${LOG_DIR}"
+rm -rf "${AUTO_SUCCESS_CACHE}" "${AUTO_FAILURE_CACHE}"
 : >"${LOG_DIR}/proxy.log"
 : >"${LOG_DIR}/vllm.log"
 
 echo "=== Phase 1: proxy-first startup with backend offline ==="
-bash "${SCRIPT_DIR}/start_proxy.sh" >"${LOG_DIR}/proxy.log" 2>&1 &
-PROXY_PID=$!
-wait_for_url "${PROXY_ENDPOINT}/status/instances" "${PROXY_PID}"
+start_proxy "${LOCAL_CONFIG}"
 wait_for_instance_status unhealthy
 assert_inference_status 503
 
 echo "=== Phase 2: node discovery and inference ==="
 start_backend
+wait_for_discovered_model
+wait_for_log_count "Auto-detected model 'facebook/opt-125m' on 127.0.0.1:8000" 1
 wait_for_log_count "Node heartbeat | mode=aggregated | aggregated=1/1 online" 1
 bash "${SCRIPT_DIR}/smoke_test.sh"
 
@@ -139,8 +192,30 @@ assert_inference_status 503
 
 echo "=== Phase 4: node reconnection ==="
 start_backend
+wait_for_discovered_model
 wait_for_log_count "Node heartbeat | mode=aggregated | aggregated=1/1 online" 2
 bash "${SCRIPT_DIR}/smoke_test.sh"
+
+echo "=== Phase 5: automatic tokenizer download ==="
+stop_proxy
+start_proxy "${AUTO_CONFIG}" "HF_HOME=${AUTO_SUCCESS_CACHE}"
+wait_for_instance_status healthy
+wait_for_discovered_model
+wait_for_log_count \
+    "Loaded tokenizer for model 'facebook/opt-125m' from facebook/opt-125m" 1
+assert_inference_status 200
+
+echo "=== Phase 6: tokenizer download failure and round-robin fallback ==="
+stop_proxy
+start_proxy "${AUTO_CONFIG}" \
+    "HF_HOME=${AUTO_FAILURE_CACHE}" \
+    "HF_HUB_OFFLINE=1" \
+    "TRANSFORMERS_OFFLINE=1"
+wait_for_instance_status healthy
+wait_for_discovered_model
+wait_for_log_count \
+    "Falling back to roundrobin scheduling for this model." 1
+assert_inference_status 200
 
 grep -q "Node heartbeat | mode=aggregated | aggregated=0/1 online" \
     "${LOG_DIR}/proxy.log"
