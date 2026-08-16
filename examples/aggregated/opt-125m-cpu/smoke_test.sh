@@ -4,10 +4,10 @@ set -euo pipefail
 
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 MODEL="facebook/opt-125m"
-CHAT_TEMPLATE="{% for message in messages %}{{ message['role'] + ': ' + message['content'] + '\n' }}{% endfor %}assistant: "
+CHAT_TEMPLATE="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content']}}{% if (loop.last and add_generation_prompt) or not loop.last %}{{ '<|im_end|>' + '\n'}}{% endif %}{% endfor %}{% if add_generation_prompt and messages[-1]['role'] != 'assistant' %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
 completion="$(
-    curl --fail --silent --show-error \
+    curl --fail-with-body --silent --show-error \
         "${PROXY_ENDPOINT}/v1/completions" \
         -H "Content-Type: application/json" \
         -d '{
@@ -35,7 +35,7 @@ assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 
 chat="$(
-    curl --fail --silent --show-error \
+    curl --fail-with-body --silent --show-error \
         "${PROXY_ENDPOINT}/v1/chat/completions" \
         -H "Content-Type: application/json" \
         -d "{
