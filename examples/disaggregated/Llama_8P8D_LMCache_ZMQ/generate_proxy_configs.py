@@ -41,7 +41,6 @@ for source in ("prefill", "decode"):
             "scheduling": scheduler,
             "disaggregated_mode": "zmq",
             "first_token_source": source,
-            "zmq_decode_direct_fallback": False,
             "zmq": {
                 "host": "127.0.0.1",
                 "port": 7500,

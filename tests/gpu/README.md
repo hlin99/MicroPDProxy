@@ -43,9 +43,19 @@ bash tests/gpu/run.sh --all --timeout 120
 
 LMCache and NIXL cases require their corresponding Python packages. The matrix
 cases run 16 model processes across four GPUs and therefore need substantially
-more GPU memory than the default suite. `GPU_TEST_LOG_DIR` and
-`GPU_TEST_TIMEOUT_MINUTES` provide environment-variable equivalents for the
-log directory and timeout.
+more GPU memory than the default suite. For CI-style validation, each 8P8D
+matrix combination uses 10 requests at concurrency 2. Override
+`GPU_TEST_MATRIX_REQUESTS` and `GPU_TEST_MATRIX_CONCURRENCY` to run a larger
+benchmark:
+
+```bash
+GPU_TEST_MATRIX_REQUESTS=1000 \
+GPU_TEST_MATRIX_CONCURRENCY=8 \
+  bash tests/gpu/run.sh --case lmcache-8p8d --timeout 120
+```
+
+`GPU_TEST_LOG_DIR` and `GPU_TEST_TIMEOUT_MINUTES` provide
+environment-variable equivalents for the log directory and timeout.
 
 `MODEL=/models/Meta-Llama-3-8B-Instruct` is also supported. The wrapper keeps
 the examples' existing logical model names stable while changing only the

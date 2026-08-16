@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 LOG_ROOT="${GPU_TEST_LOG_DIR:-${SCRIPT_DIR}/logs}"
 TIMEOUT_MINUTES="${GPU_TEST_TIMEOUT_MINUTES:-90}"
+MATRIX_REQUESTS="${GPU_TEST_MATRIX_REQUESTS:-10}"
+MATRIX_CONCURRENCY="${GPU_TEST_MATRIX_CONCURRENCY:-2}"
 MODEL="${MODEL:-/workspace/Meta-Llama-3-8B-Instruct/}"
 DEFAULT_CASES=(aggregated direct mixed)
 ALL_CASES=(aggregated direct mixed lmcache-2p2d nixl-2p2d lmcache-8p8d nixl-8p8d)
@@ -118,6 +120,12 @@ done
 
 if ((${#SELECTED_CASES[@]} == 0)); then
     SELECTED_CASES=("${DEFAULT_CASES[@]}")
+fi
+
+if [[ ! "${MATRIX_REQUESTS}" =~ ^[1-9][0-9]*$ ||
+        ! "${MATRIX_CONCURRENCY}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: GPU_TEST_MATRIX_REQUESTS and GPU_TEST_MATRIX_CONCURRENCY must be positive integers." >&2
+    exit 2
 fi
 
 for command in curl nvidia-smi python3 timeout vllm xpyd; do
@@ -235,6 +243,7 @@ run_case() {
     local log_file="${RUN_DIR}/${name}.log"
     local baseline_file="${RUN_DIR}/.${name}-gpu-pids"
     local started=${SECONDS} status="PASS" rc=0
+    local -a scenario_env=()
 
     echo
     echo "=== ${name}: ${CASE_DESCRIPTION[${name}]} ==="
@@ -249,8 +258,15 @@ run_case() {
         status="FAIL"
         rc=1
     else
+        if [[ "${name}" == *-8p8d ]]; then
+            scenario_env=(
+                env
+                "REQUESTS=${MATRIX_REQUESTS}"
+                "CONCURRENCY=${MATRIX_CONCURRENCY}"
+            )
+        fi
         timeout --signal=TERM --kill-after=60s "${TIMEOUT_MINUTES}m" \
-            bash "${script}" 2>&1 | tee -a "${log_file}"
+            "${scenario_env[@]}" bash "${script}" 2>&1 | tee -a "${log_file}"
         rc=${PIPESTATUS[0]}
         if ((rc != 0)); then
             status="FAIL"
