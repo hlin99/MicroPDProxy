@@ -43,6 +43,55 @@ sed -i 's/f"nixl\*{NIXL_VERSION}\*\.whl"/"nixl*.whl"/' "${installer}"
 sed -i \
     '/f"--wheel-dir={temp_wheel_dir}",/a\            "--config-settings=setup-args=-Denable_plugins=UCX",' \
     "${installer}"
+
+python - "${installer}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+content = path.read_text()
+content = content.replace(
+    "import subprocess\n",
+    "import subprocess\nimport shutil\nimport tempfile\nimport zipfile\n",
+    1,
+)
+content = content.replace(
+    "    auditwheel_command = [\n",
+    """    wheel_extract_dir = tempfile.mkdtemp(prefix="nixl-wheel-")
+    with zipfile.ZipFile(unrepaired_wheel) as wheel:
+        wheel.extractall(wheel_extract_dir)
+    internal_lib_dirs = sorted({
+        os.path.dirname(library)
+        for library in glob.glob(
+            os.path.join(
+                wheel_extract_dir,
+                ".*.mesonpy.libs",
+                "**",
+                "*.so*",
+            ),
+            recursive=True,
+        )
+    })
+    if not internal_lib_dirs:
+        raise RuntimeError("NIXL wheel did not contain internal shared libraries")
+    build_env["LD_LIBRARY_PATH"] = ":".join(
+        internal_lib_dirs + [build_env.get("LD_LIBRARY_PATH", "")]
+    ).strip(":")
+
+    auditwheel_command = [
+""",
+    1,
+)
+content = content.replace(
+    "    run_command(auditwheel_command, env=build_env)\n",
+    """    run_command(auditwheel_command, env=build_env)
+    shutil.rmtree(wheel_extract_dir)
+""",
+    1,
+)
+path.write_text(content)
+PY
+
 NIXL_VERSION="${NIXL_VERSION}" python "${installer}"
 python - <<'PY'
 import nixl
