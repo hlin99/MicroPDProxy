@@ -47,8 +47,9 @@ xpyd proxy --model my-model \
 
 📖 **[Full Guide →](docs/guide.md)** | 💡 **[Examples →](examples/)** | 🏗️ **[Contributing →](CONTRIBUTING.md)**
 
-The [OPT-125M CPU example](examples/aggregated/opt-125m-cpu/) validates
-proxy-first startup and a real vLLM lifecycle on a GitHub-hosted runner.
+The [aggregated OPT-125M CPU example](examples/aggregated/opt-125m-cpu/) and
+[disaggregated 1P1D NIXL TCP variant](examples/disaggregated/opt-125m-cpu-nixl/)
+validate proxy-first startup and real vLLM lifecycles on GitHub-hosted runners.
 
 ## License
 

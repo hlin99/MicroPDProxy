@@ -1,0 +1,21 @@
+tokenizer_path: /tmp/tokenizers
+instances:
+  - address: 127.0.0.1:8100
+    role: prefill
+    model: facebook/opt-125m
+  - address: 127.0.0.1:8200
+    role: decode
+    model: facebook/opt-125m
+disaggregated_mode: nixl
+first_token_source: decode
+port: 8868
+log_level: info
+scheduling: roundrobin
+startup:
+  wait_timeout_seconds: 600
+  probe_interval_seconds: 1
+  heartbeat_interval_seconds: 10
+health_check:
+  enabled: true
+  interval_seconds: 1
+  timeout_seconds: 1
