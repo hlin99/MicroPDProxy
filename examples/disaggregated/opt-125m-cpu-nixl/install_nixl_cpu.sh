@@ -5,6 +5,13 @@ set -euo pipefail
 NIXL_VERSION="${NIXL_VERSION:-v1.3.0}"
 VLLM_VERSION="${VLLM_VERSION:-0.25.0}"
 export WHEELS_CACHE_HOME="${WHEELS_CACHE_HOME:-${HOME}/.cache/xpyd-nixl-wheels}"
+DEFAULT_UCX_NET_DEVICE=""
+if [[ -r /proc/net/route ]]; then
+    DEFAULT_UCX_NET_DEVICE="$(
+        awk '$2 == "00000000" {print $1; exit}' /proc/net/route
+    )"
+fi
+export UCX_NET_DEVICES="${UCX_NET_DEVICES:-${DEFAULT_UCX_NET_DEVICE:-all}}"
 
 mkdir -p "${WHEELS_CACHE_HOME}"
 
@@ -106,7 +113,7 @@ platform_version="$(
     python -c 'import importlib.metadata as m; print(m.version("nixl-cu12"))'
 )"
 python -m pip install --no-deps "nixl==${platform_version}"
-UCX_NET_DEVICES=all UCX_TLS=tcp python - <<'PY'
+UCX_TLS=tcp python - <<'PY'
 import os
 from pathlib import Path
 import tempfile

@@ -8,8 +8,10 @@ disaggregated counterpart to the aggregated OPT-125M CPU example.
 Standard GitHub-hosted Linux runners do not provide GPUs. NIXL therefore must
 be built with UCX from source instead of using its CUDA-oriented PyPI quick
 install. The workflow caches the resulting wheel and caps each vLLM process at
-512 MiB of KV cache. A self-hosted GPU runner remains the recommended target
-for performance testing; this CPU scenario validates behavior only.
+512 MiB of KV cache. UCX uses the host's default-route network interface to
+avoid zero-bandwidth loopback devices. A self-hosted GPU runner remains the
+recommended target for performance testing; this CPU scenario validates
+behavior only.
 
 Run it on Ubuntu 22.04 with:
 
