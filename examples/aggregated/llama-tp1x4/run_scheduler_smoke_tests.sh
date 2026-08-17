@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-XPYD_ROOT="/workspace/xPyD-proxy"
+XPYD_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 SMOKE_NUM_PROMPTS="${SMOKE_NUM_PROMPTS:-32}"
 RESULT_ROOT="${RESULT_ROOT:-${SCRIPT_DIR}/scheduler_results}"

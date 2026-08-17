@@ -27,6 +27,40 @@ wait_for_health() {
     done
 }
 
+wait_for_instances() {
+    local deadline=$((SECONDS + 120))
+
+    until curl --silent --fail --max-time 2 \
+        "http://127.0.0.1:8868/status/instances" |
+        python3 -c '
+import json
+import sys
+
+status = json.load(sys.stdin)
+expected = {"prefill_instances": 2, "decode_instances": 2}
+raise SystemExit(
+    0
+    if all(
+        len(status[key]) == count
+        and all(instance["status"] == "healthy" for instance in status[key])
+        for key, count in expected.items()
+    )
+    else 1
+)
+'; do
+        if ! kill -0 "${PROXY_PID}" 2>/dev/null; then
+            echo "ERROR: proxy exited before all direct instances became healthy." >&2
+            return 1
+        fi
+        (( SECONDS < deadline )) || {
+            echo "ERROR: timed out waiting for all direct instances." >&2
+            curl --silent "http://127.0.0.1:8868/status/instances" >&2 || true
+            return 1
+        }
+        sleep 2
+    done
+}
+
 trap cleanup EXIT INT TERM
 
 bash "${SCRIPT_DIR}/start_proxy.sh" >"${SCRIPT_DIR}/proxy.log" 2>&1 &
@@ -38,5 +72,6 @@ BACKEND_PID=$!
 for port in 8100 8101 8200 8201; do
     wait_for_health "http://127.0.0.1:${port}/health" "${BACKEND_PID}"
 done
+wait_for_instances
 
 bash "${SCRIPT_DIR}/smoke_test.sh"

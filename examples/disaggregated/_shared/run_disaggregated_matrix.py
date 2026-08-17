@@ -61,6 +61,7 @@ def main() -> None:
 
     root = args.scenario_dir.resolve()
     harness = Path(__file__).resolve().parent / "disaggregated_matrix_bench.py"
+    repo_root = Path(__file__).resolve().parents[3]
     failures: list[dict[str, object]] = []
     sources = tuple(args.source or SOURCES)
     apis = tuple(args.api or APIS)
@@ -86,7 +87,7 @@ def main() -> None:
                 with log_path.open("wb") as log:
                     process = subprocess.Popen(
                         ["xpyd", "proxy", "--config", str(config)],
-                        cwd="/workspace/xPyD-proxy",
+                        cwd=repo_root,
                         stdout=log,
                         stderr=subprocess.STDOUT,
                     )
