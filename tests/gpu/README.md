@@ -46,14 +46,13 @@ cases run 16 model processes across four GPUs and therefore need substantially
 more GPU memory than the default suite. LMCache scenarios use 2 GiB CPU
 transfer buffers per node so the validation does not compete with model
 weights for GPU memory. For CI-style validation, each 8P8D matrix combination
-uses 100 requests at concurrency 64, for 1,000 requests across the 10
-combinations. Override
-`GPU_TEST_MATRIX_REQUESTS` and `GPU_TEST_MATRIX_CONCURRENCY` to run a larger
-benchmark:
+uses 1,000 requests at concurrency 128, for 10,000 requests across the 10
+combinations. Override `GPU_TEST_MATRIX_REQUESTS` and
+`GPU_TEST_MATRIX_CONCURRENCY` to use a different load:
 
 ```bash
 GPU_TEST_MATRIX_REQUESTS=1000 \
-GPU_TEST_MATRIX_CONCURRENCY=64 \
+GPU_TEST_MATRIX_CONCURRENCY=128 \
   bash tests/gpu/run.sh --case lmcache-8p8d --timeout 120
 ```
 
