@@ -19,12 +19,13 @@ prefill = [f"127.0.0.1:{8100 + index}" for index in range(8)]
 decode = [f"127.0.0.1:{8200 + index}" for index in range(8)]
 for source in ("prefill", "decode"):
     discard_partial_chunks = False
+    skip_last_n_tokens = 1 if source == "prefill" else 0
     receivers = {
         address: {
             "host": "127.0.0.1",
             "init_ports": [7300 + index],
             "alloc_ports": [7400 + index],
-            "skip_last_n_tokens": 1,
+            "skip_last_n_tokens": skip_last_n_tokens,
             "discard_partial_chunks": discard_partial_chunks,
         }
         for index, address in enumerate(decode)

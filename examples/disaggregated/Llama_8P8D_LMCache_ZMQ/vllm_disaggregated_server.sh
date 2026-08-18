@@ -11,7 +11,7 @@ PIDS=()
 if [[ "${FIRST_TOKEN_SOURCE}" == "prefill" ]]; then
     DECODE_SKIP_LAST_TOKENS=1
 elif [[ "${FIRST_TOKEN_SOURCE}" == "decode" ]]; then
-    DECODE_SKIP_LAST_TOKENS=1
+    DECODE_SKIP_LAST_TOKENS=0
 else
     echo "FIRST_TOKEN_SOURCE must be 'prefill' or 'decode'" >&2
     exit 2
@@ -83,6 +83,21 @@ wait_port() {
     done
 }
 
+verify_all_models() {
+    local pass port
+
+    for pass in 1 2 3; do
+        for port in {8100..8107} {8200..8207}; do
+            curl --silent --fail --max-time 2 \
+                "http://127.0.0.1:${port}/v1/models" >/dev/null || {
+                echo "Backend on port ${port} exited during startup stabilization." >&2
+                return 1
+            }
+        done
+        ((pass == 3)) || sleep 5
+    done
+}
+
 trap cleanup EXIT INT TERM
 
 # Start one process per GPU per round to avoid transient FP8 conversion OOM.
@@ -109,5 +124,6 @@ for round in 0 1 2 3; do
     done
 done
 
+verify_all_models
 echo "All 8P8D ${FIRST_TOKEN_SOURCE}-first instances are ready. Press Ctrl-C to stop."
 wait
