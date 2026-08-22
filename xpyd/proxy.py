@@ -1070,7 +1070,7 @@ class ProxyServer:
         server.run()
 
 
-_VERSION = "1.2.0"
+_VERSION = "1.5.0"
 
 
 def _build_parser():
