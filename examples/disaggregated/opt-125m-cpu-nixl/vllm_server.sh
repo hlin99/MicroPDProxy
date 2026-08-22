@@ -9,9 +9,16 @@ SIDE_CHANNEL_PORT="${3:?usage: vllm_server.sh <prefill|decode> <http-port> <side
 MODEL_DIR="${MODEL_DIR:-/tmp/tokenizers/facebook/opt-125m}"
 DEFAULT_UCX_NET_DEVICE=""
 if [[ -r /proc/net/route ]]; then
-    DEFAULT_UCX_NET_DEVICE="$(
+    candidate_ucx_net_device="$(
         awk '$2 == "00000000" {print $1; exit}' /proc/net/route
     )"
+    speed_file="/sys/class/net/${candidate_ucx_net_device}/speed"
+    if [[ -n "${candidate_ucx_net_device}" && -r "${speed_file}" ]]; then
+        candidate_ucx_net_device_speed="$(<"${speed_file}")"
+        if [[ "${candidate_ucx_net_device_speed}" =~ ^[0-9]+$ ]] && (( candidate_ucx_net_device_speed > 0 )); then
+            DEFAULT_UCX_NET_DEVICE="${candidate_ucx_net_device}"
+        fi
+    fi
 fi
 
 case "${ROLE}" in

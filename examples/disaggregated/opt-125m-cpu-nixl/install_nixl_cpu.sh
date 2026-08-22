@@ -7,9 +7,16 @@ VLLM_VERSION="${VLLM_VERSION:-0.25.0}"
 export WHEELS_CACHE_HOME="${WHEELS_CACHE_HOME:-${HOME}/.cache/xpyd-nixl-wheels}"
 DEFAULT_UCX_NET_DEVICE=""
 if [[ -r /proc/net/route ]]; then
-    DEFAULT_UCX_NET_DEVICE="$(
+    candidate_ucx_net_device="$(
         awk '$2 == "00000000" {print $1; exit}' /proc/net/route
     )"
+    speed_file="/sys/class/net/${candidate_ucx_net_device}/speed"
+    if [[ -n "${candidate_ucx_net_device}" && -r "${speed_file}" ]]; then
+        candidate_ucx_net_device_speed="$(<"${speed_file}")"
+        if [[ "${candidate_ucx_net_device_speed}" =~ ^[0-9]+$ ]] && (( candidate_ucx_net_device_speed > 0 )); then
+            DEFAULT_UCX_NET_DEVICE="${candidate_ucx_net_device}"
+        fi
+    fi
 fi
 export UCX_NET_DEVICES="${UCX_NET_DEVICES:-${DEFAULT_UCX_NET_DEVICE:-all}}"
 
