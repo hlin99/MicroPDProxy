@@ -235,9 +235,7 @@ class TestProxyConfigFromYaml:
     )
     def test_from_yaml_legacy_fields_rejected(self, tmp_path, legacy_field):
         p = tmp_path / "cfg.yaml"
-        p.write_text(
-            f"model: m\ndecode:\n  - '10.0.0.1:8000'\n{legacy_field}: false\n"
-        )
+        p.write_text(f"model: m\ndecode:\n  - '10.0.0.1:8000'\n{legacy_field}: false\n")
         with pytest.raises(ValueError, match=legacy_field):
             ProxyConfig.from_yaml(p)
 

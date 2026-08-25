@@ -184,7 +184,8 @@ class TestSuggestions:
         fixer = ConfigFixer(data)
         report = fixer.run()
         assert any(
-            "both aggregated and prefill/decode" in s.message for s in report.suggestions
+            "both aggregated and prefill/decode" in s.message
+            for s in report.suggestions
         )
 
     def test_address_conflict(self):

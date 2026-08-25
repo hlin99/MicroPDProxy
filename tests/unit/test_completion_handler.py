@@ -420,11 +420,13 @@ class TestZmqChatHelpers:
     @pytest.mark.asyncio
     async def test_nonstream_conversion(self):
         async def source():
-            yield json.dumps({
-                "id": "cmpl",
-                "object": "text_completion",
-                "choices": [{"index": 0, "text": "hello", "finish_reason": "stop"}],
-            }).encode()
+            yield json.dumps(
+                {
+                    "id": "cmpl",
+                    "object": "text_completion",
+                    "choices": [{"index": 0, "text": "hello", "finish_reason": "stop"}],
+                }
+            ).encode()
 
         chunks = [chunk async for chunk in _chat_completion_nonstream(source())]
         output = json.loads(chunks[0])
@@ -437,16 +439,18 @@ class TestZmqChatHelpers:
     @pytest.mark.asyncio
     async def test_prefill_first_nonstream_merges_chat_and_usage(self, server):
         async def decode():
-            yield json.dumps({
-                "id": "cmpl-d",
-                "object": "text_completion",
-                "choices": [{"index": 0, "text": "B", "finish_reason": "stop"}],
-                "usage": {
-                    "prompt_tokens": 4,
-                    "completion_tokens": 1,
-                    "total_tokens": 5,
-                },
-            }).encode()
+            yield json.dumps(
+                {
+                    "id": "cmpl-d",
+                    "object": "text_completion",
+                    "choices": [{"index": 0, "text": "B", "finish_reason": "stop"}],
+                    "usage": {
+                        "prompt_tokens": 4,
+                        "completion_tokens": 1,
+                        "total_tokens": 5,
+                    },
+                }
+            ).encode()
 
         prefill = {
             "id": "cmpl-p",
@@ -608,9 +612,7 @@ class TestHandleCompletion:
     @pytest.mark.parametrize("source", ["decode", "prefill"])
     @pytest.mark.parametrize("stream", [False, True])
     @pytest.mark.parametrize("max_tokens", [1, 2])
-    async def test_zmq_chat_completion_modes(
-        self, server, source, stream, max_tokens
-    ):
+    async def test_zmq_chat_completion_modes(self, server, source, stream, max_tokens):
         from xpyd.proxy import D_first_token_generator
 
         request = {
@@ -633,9 +635,7 @@ class TestHandleCompletion:
             "input_ids": [1, 2, 3],
             "attention_mask": [1, 1, 1],
         }
-        server.schedule = MagicMock(
-            side_effect=["prefill:8000", "decode:8000"]
-        )
+        server.schedule = MagicMock(side_effect=["prefill:8000", "decode:8000"])
         server.prefill_cycler = MagicMock()
         server.decode_cycler = MagicMock()
         server.zmq_config.receivers = {"decode:8000": receiver}
@@ -651,18 +651,20 @@ class TestHandleCompletion:
         async def forward(url, data, **kwargs):
             forwarded.append((url, data.copy()))
             if "prefill" in url:
-                yield json.dumps({
-                    "id": "cmpl-p",
-                    "created": 1,
-                    "model": "model",
-                    "choices": [{"index": 0, "text": "A"}],
-                    "usage": {
-                        "prompt_tokens": 3,
-                        "completion_tokens": 1,
-                        "total_tokens": 4,
-                    },
-                    "kv_transfer_params": {"first_tok": 9},
-                }).encode()
+                yield json.dumps(
+                    {
+                        "id": "cmpl-p",
+                        "created": 1,
+                        "model": "model",
+                        "choices": [{"index": 0, "text": "A"}],
+                        "usage": {
+                            "prompt_tokens": 3,
+                            "completion_tokens": 1,
+                            "total_tokens": 4,
+                        },
+                        "kv_transfer_params": {"first_tok": 9},
+                    }
+                ).encode()
             elif stream:
                 yield (
                     b'data: {"id":"cmpl-d","created":2,"model":"model",'
@@ -671,26 +673,30 @@ class TestHandleCompletion:
                 )
                 yield b"data: [DONE]\n\n"
             else:
-                yield json.dumps({
-                    "id": "cmpl-d",
-                    "object": "text_completion",
-                    "created": 2,
-                    "model": "model",
-                    "choices": [{
-                        "index": 0,
-                        "text": "B",
-                        "finish_reason": "stop",
-                    }],
-                    "usage": {
-                        "prompt_tokens": 4 if source == "prefill" else 3,
-                        "completion_tokens": (
-                            1 if source == "prefill" else max_tokens
-                        ),
-                        "total_tokens": (
-                            5 if source == "prefill" else 3 + max_tokens
-                        ),
-                    },
-                }).encode()
+                yield json.dumps(
+                    {
+                        "id": "cmpl-d",
+                        "object": "text_completion",
+                        "created": 2,
+                        "model": "model",
+                        "choices": [
+                            {
+                                "index": 0,
+                                "text": "B",
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 4 if source == "prefill" else 3,
+                            "completion_tokens": (
+                                1 if source == "prefill" else max_tokens
+                            ),
+                            "total_tokens": (
+                                5 if source == "prefill" else 3 + max_tokens
+                            ),
+                        },
+                    }
+                ).encode()
 
         server.forward_request = forward
         with (
@@ -714,9 +720,7 @@ class TestHandleCompletion:
         assert forwarded[0][1]["prompt"] == [1, 2, 3]
         if len(forwarded) == 2:
             assert "messages" not in forwarded[1][1]
-            expected_prompt = (
-                [1, 2, 3, 9] if source == "prefill" else [1, 2, 3]
-            )
+            expected_prompt = [1, 2, 3, 9] if source == "prefill" else [1, 2, 3]
             assert forwarded[1][1]["prompt"] == expected_prompt
             expected_max = max_tokens - 1 if source == "prefill" else max_tokens
             assert forwarded[1][1]["max_tokens"] == expected_max

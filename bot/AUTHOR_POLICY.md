@@ -44,4 +44,3 @@ Every PR must update relevant documentation:
 | Architecture change | `docs/architecture.md` |
 | Design decision | `docs/design.md` |
 | Quick Start affected | `README.md` (keep one screen, link to guide.md) |
-

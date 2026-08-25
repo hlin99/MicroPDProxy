@@ -106,9 +106,7 @@ def test_pd_model_with_failed_tokenizer_uses_round_robin():
     proxy = _proxy()
     proxy.registry = registry
     proxy._round_robin_models.add("org/model")
-    proxy._round_robin_policy = RoundRobinSchedulingPolicy(
-        registry=registry
-    )
+    proxy._round_robin_policy = RoundRobinSchedulingPolicy(registry=registry)
     proxy.scheduling_policy = MagicMock()
 
     selected = Proxy.schedule(
