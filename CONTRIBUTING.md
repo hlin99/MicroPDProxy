@@ -19,7 +19,7 @@ pytest tests/unit/ -q
 - Python 3.10+
 - Ruff: `ruff check .`
 - Pre-commit: `pre-commit run --all-files`
-- All PRs must pass CI (lint + tests + integration trigger)
+- All PRs must pass CI (pre-commit + lint + tests + integration trigger)
 
 ## Bot Development
 

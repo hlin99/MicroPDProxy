@@ -42,15 +42,17 @@ class TestDiscoveryAggregatedReady:
         )
         d.healthy_prefill.add("10.0.0.1:8000")
 
-        assert d._role_heartbeat(
-            "P", d.prefill_instances, d.healthy_prefill
-        ) == "P=1/2 online"
-        assert d._role_heartbeat(
-            "D", d.decode_instances, d.healthy_decode
-        ) == "D=0/1 online"
+        assert (
+            d._role_heartbeat("P", d.prefill_instances, d.healthy_prefill)
+            == "P=1/2 online"
+        )
+        assert (
+            d._role_heartbeat("D", d.decode_instances, d.healthy_decode)
+            == "D=0/1 online"
+        )
 
     def test_aggregated_only_is_ready(self):
-        """All-aggregated deployment: is_ready=True when aggregated nodes are healthy."""
+        """Aggregated deployment is ready when its nodes are healthy."""
         d = NodeDiscovery(
             prefill_instances=[],
             decode_instances=[],
@@ -88,7 +90,7 @@ class TestDiscoveryAggregatedReady:
         assert d.is_ready is False
 
     def test_mixed_aggregated_and_pd(self):
-        """Mixed: aggregated healthy but disaggregated not complete → still ready (aggregated suffices)."""
+        """A healthy aggregated node makes a mixed deployment ready."""
         d = NodeDiscovery(
             prefill_instances=["10.0.0.1:8000"],
             decode_instances=[],

@@ -12,7 +12,9 @@ class TestInstanceEntryAggregatedRole:
     """InstanceEntry accepts role='aggregated'."""
 
     def test_aggregated_role_valid(self):
-        entry = InstanceEntry(address="10.0.0.1:8000", role="aggregated", model="qwen-2")
+        entry = InstanceEntry(
+            address="10.0.0.1:8000", role="aggregated", model="qwen-2"
+        )
         assert entry.role == "aggregated"
 
     def test_invalid_role_rejected(self):
@@ -87,7 +89,11 @@ class TestAggregatedDisaggregatedMutualExclusivity:
         with pytest.raises(ValueError, match="mixes aggregated and prefill/decode"):
             ProxyConfig(
                 instances=[
-                    {"address": "10.0.0.1:8000", "role": "aggregated", "model": "qwen-2"},
+                    {
+                        "address": "10.0.0.1:8000",
+                        "role": "aggregated",
+                        "model": "qwen-2",
+                    },
                     {"address": "10.0.0.2:8000", "role": "decode", "model": "qwen-2"},
                 ],
             )

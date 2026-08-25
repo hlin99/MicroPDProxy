@@ -404,7 +404,7 @@ class TestScheduleAggregatedCompletionReal:
     """Test schedule_aggregated_completion with real registry."""
 
     def test_with_real_loadbalanced_scheduler(self):
-        """schedule_aggregated_completion with real registry decrements active requests."""
+        """A real registry decrements active requests after completion."""
         from xpyd.proxy import Proxy
 
         reg = InstanceRegistry()

@@ -1,6 +1,5 @@
 """Tests for the /metrics Prometheus endpoint."""
 
-
 from xpyd.metrics import (
     get_metrics,
     proxy_active_requests,
