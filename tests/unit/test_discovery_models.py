@@ -57,9 +57,7 @@ class TestProbeModels:
         )
         mock_resp = AsyncMock()
         mock_resp.status = 200
-        mock_resp.json = AsyncMock(
-            return_value={"data": [{"id": "org/model"}]}
-        )
+        mock_resp.json = AsyncMock(return_value={"data": [{"id": "org/model"}]})
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=False)
         mock_session = MagicMock()
@@ -80,18 +78,14 @@ class TestProbeModels:
         )
         mock_resp = AsyncMock()
         mock_resp.status = 200
-        mock_resp.json = AsyncMock(
-            return_value={"data": [{"id": "org/model"}]}
-        )
+        mock_resp.json = AsyncMock(return_value={"data": [{"id": "org/model"}]})
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=False)
         mock_session = MagicMock()
         mock_session.get.return_value = mock_resp
 
         with pytest.raises(ValueError, match="bad tokenizer path"):
-            await discovery._probe_models(
-                mock_session, "10.0.0.1:8000"
-            )
+            await discovery._probe_models(mock_session, "10.0.0.1:8000")
 
     @pytest.mark.asyncio()
     async def test_probe_models_non_200_graceful(self, discovery, registry):
