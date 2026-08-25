@@ -28,23 +28,17 @@ jobs:
           key: cpu-example-vllm-0.25.2.dev202607190821-tokenizers-opt-125m
       - name: Install xPyD and vLLM CPU
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            python -m venv .venv
-            .venv/bin/python -m pip install --upgrade pip
-            .venv/bin/python -m pip install -e .
-            PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
-              bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
-          '
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e .
+          PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
+            bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
       - name: Download OPT-125M
-        run: |
-          bash .github/scripts/retry.sh 3 \
-            bash examples/aggregated/opt-125m-cpu/download_model.sh
+        run: bash examples/aggregated/opt-125m-cpu/download_model.sh
       - name: Run aggregated CPU lifecycle test
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
-            bash examples/aggregated/opt-125m-cpu/run_all.sh
-          '
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/aggregated/opt-125m-cpu/run_all.sh
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -70,29 +64,21 @@ jobs:
           key: cpu-example-vllm-0.25.2.dev202607190821-nixl-1.3.0-opt-125m
       - name: Install xPyD and vLLM CPU
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            python -m venv .venv
-            .venv/bin/python -m pip install --upgrade pip
-            .venv/bin/python -m pip install -e .
-            PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
-              bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
-          '
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e .
+          PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
+            bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
       - name: Build CPU NIXL with UCX
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
-            bash examples/disaggregated/opt-125m-cpu-nixl/install_nixl_cpu.sh
-          '
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/disaggregated/opt-125m-cpu-nixl/install_nixl_cpu.sh
       - name: Download OPT-125M
-        run: |
-          bash .github/scripts/retry.sh 3 \
-            bash examples/aggregated/opt-125m-cpu/download_model.sh
+        run: bash examples/aggregated/opt-125m-cpu/download_model.sh
       - name: Run 1P1D disaggregated CPU lifecycle test
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
-            bash examples/disaggregated/opt-125m-cpu-nixl/run_all.sh
-          '
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/disaggregated/opt-125m-cpu-nixl/run_all.sh
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -134,32 +120,24 @@ jobs:
           key: cpu-example-vllm-0.25.2.dev202607190821-nixl-1.3.0-opt-125m
       - name: Install xPyD and vLLM CPU
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            python -m venv .venv
-            .venv/bin/python -m pip install --upgrade pip
-            .venv/bin/python -m pip install -e .
-            PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
-              bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
-          '
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e .
+          PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}" \
+            bash examples/aggregated/opt-125m-cpu/install_vllm_cpu.sh
       - name: Build CPU NIXL with UCX
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
-            bash examples/disaggregated/opt-125m-cpu-nixl/install_nixl_cpu.sh
-          '
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/disaggregated/opt-125m-cpu-nixl/install_nixl_cpu.sh
       - name: Download OPT-125M
-        run: |
-          bash .github/scripts/retry.sh 3 \
-            bash examples/aggregated/opt-125m-cpu/download_model.sh
+        run: bash examples/aggregated/opt-125m-cpu/download_model.sh
       - name: Run ${{ matrix.topology }} disaggregated CPU lifecycle test
         run: |
-          bash .github/scripts/retry.sh 3 bash -c '
-            export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
-            bash examples/disaggregated/opt-125m-cpu-nixl/run_topology.sh \
-              "${{ matrix.config }}" \
-              "${{ matrix.prefill-count }}" \
-              "${{ matrix.decode-count }}"
-          '
+          export PATH="${GITHUB_WORKSPACE}/.venv/bin:${PATH}"
+          bash examples/disaggregated/opt-125m-cpu-nixl/run_topology.sh \
+            "${{ matrix.config }}" \
+            "${{ matrix.prefill-count }}" \
+            "${{ matrix.decode-count }}"
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
