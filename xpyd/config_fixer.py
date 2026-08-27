@@ -20,13 +20,22 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from xpyd.scheduler.policy_registry import default_registry
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 _VALID_ROLES = ("prefill", "decode", "aggregated")
+_VALID_SCHEDULERS = (
+    "roundrobin",
+    "loadbalanced",
+    "consistent_hash",
+    "power_of_two",
+    "cache_aware",
+)
+_SCHEDULER_ALIASES = {
+    "round_robin": "roundrobin",
+    "load_balanced": "loadbalanced",
+}
 _DEFAULT_PORT = 8000
 _MIN_FUZZY_LEN = 3
 
@@ -88,17 +97,21 @@ def _fuzzy_match_role(value: str) -> Optional[str]:
 
 def _fuzzy_match_scheduler(value: str) -> Optional[str]:
     """Return the corrected scheduler string, or ``None`` if no fix."""
-    policies = default_registry.list_policies()
-    if value in policies:
-        return None
     lowered = value.lower().strip()
-    if lowered in policies:
-        return lowered
+    canonical = _SCHEDULER_ALIASES.get(lowered, lowered)
+    if canonical in _VALID_SCHEDULERS:
+        return canonical if canonical != value else None
     if len(lowered) < _MIN_FUZZY_LEN:
         return None
-    matches = difflib.get_close_matches(lowered, policies, n=1, cutoff=0.6)
+    candidates = _VALID_SCHEDULERS + tuple(_SCHEDULER_ALIASES)
+    matches = difflib.get_close_matches(
+        lowered,
+        candidates,
+        n=1,
+        cutoff=0.6,
+    )
     if matches:
-        return matches[0]
+        return _SCHEDULER_ALIASES.get(matches[0], matches[0])
     return None
 
 

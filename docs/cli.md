@@ -36,13 +36,11 @@ requests.
 | `--help` | Show help message and exit. |
 | `--version` | Show version number and exit. |
 | `--validate-config FILE` | Validate a YAML config file without starting the server. Exits with code 0 if valid, non-zero with error details if invalid. |
+| `--init-config [PATH]` | Generate a YAML config and exit. Offers an interactive wizard, defaulting to the documented template after 5 seconds. Defaults to `./xpyd.yaml`. |
 | `XPYD_CONFIG` | Environment variable alternative to `--config`. |
 
-### Legacy CLI Arguments
-
-For backward compatibility, the existing CLI arguments (`--model`, `--prefill`,
-`--decode`, etc.) continue to work. However, YAML configuration is the
-recommended approach for new deployments.
+The proxy configuration is YAML-only. Legacy arguments such as `--model`,
+`--prefill`, and `--decode` are not supported.
 
 ## Startup Node Discovery
 
@@ -101,16 +99,44 @@ xpyd
 ### Validate configuration without starting
 
 ```bash
-xpyd --validate-config proxy.yaml
-# Output: Configuration is valid.
+xpyd proxy --validate-config proxy.yaml
+# Output: Config is valid: proxy.yaml
 # Exit code: 0
 ```
 
 ```bash
-xpyd --validate-config bad.yaml
+xpyd proxy --validate-config bad.yaml
 # Output: Configuration error: "model" is required
 # Exit code: 1
 ```
+
+### Generate configuration
+
+```bash
+xpyd proxy --init-config proxy.yaml
+```
+
+Enter `Y` within five seconds to use the wizard. Its first question selects an
+`aggregated` or `disaggregated` topology, followed by the model, topology-
+appropriate instance counts and addresses, tokenizer path, port, logging,
+scheduling, first-token source (for disaggregated deployments), and health
+checks. Enter `N` or wait five seconds to generate the documented template
+instead. Wizard-generated files are validated before they are written.
+Defaults are underlined in interactive terminals; pressing Enter selects the
+underlined value.
+
+Disaggregated deployments also select `direct`, `nixl`, or `zmq` transfer.
+For ZMQ, the wizard creates the required notification listener and per-decode
+receiver mappings from the chosen base ports and channel count.
+
+Backend addresses can be entered as a single address, a comma/space-separated
+list, or a full IPv4 range such as `192.168.0.1-192.168.0.10`. For each role,
+choose `same` to enter one shared port, or `per-instance` to provide ports in
+the address input. Per-instance mode supports explicit `IP:PORT` lists, a
+single-host port range such as `192.168.0.1:8100-8109`, and aligned IP/port
+ranges such as `192.168.0.1-192.168.0.10:8100-8109`. The wizard expands the
+input and requires the resulting address count to match the declared instance
+count.
 
 ### Use default config file
 

@@ -36,4 +36,43 @@ jobs:
       - run: pip install build && python -m build
       - run: pip install dist/*.whl
       - run: xpyd --help && xpyd --version
+      - name: Smoke test config CLI
+        run: |
+          set -euxo pipefail
+          tmpdir="$(mktemp -d)"
+
+          printf 'n\n' | xpyd proxy --init-config "$tmpdir/generated.yaml"
+          xpyd proxy --validate-config "$tmpdir/generated.yaml"
+
+          xpyd proxy --init-config "$tmpdir/interactive.yaml" <<'EOF'
+          y
+          aggregated
+          ci-model
+          1
+          same
+          8100
+          127.0.0.1
+
+          8000
+          warning
+          loadbalanced
+          y
+          EOF
+          xpyd proxy --validate-config "$tmpdir/interactive.yaml"
+
+          cat > "$tmpdir/fixable.yaml" <<'YAML'
+          model: demo
+          decode:
+            - 127.0.0.1
+          scheduling: round_robbin
+          YAML
+
+          if xpyd proxy --validate-config "$tmpdir/fixable.yaml"; then
+            echo "Expected invalid config to fail validation" >&2
+            exit 1
+          fi
+
+          xpyd fix-config "$tmpdir/fixable.yaml" --write
+          xpyd proxy --validate-config "$tmpdir/fixable.yaml"
+          test "$(find "$tmpdir" -name '*.bak' -type f | wc -l)" -eq 1
       - run: pip install pytest pytest-asyncio && python -m pytest tests/unit/ -v --tb=short

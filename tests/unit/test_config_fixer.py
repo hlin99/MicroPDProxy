@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import yaml
 
+from xpyd.config import ProxyConfig
 from xpyd.config_fixer import ConfigFixer, run_fix_config
 
 
@@ -79,7 +80,7 @@ class TestAutoFixRules:
         }
         fixer = ConfigFixer(data)
         report = fixer.run()
-        assert fixer.fixed_data["scheduling"] == "round_robin"
+        assert fixer.fixed_data["scheduling"] == "roundrobin"
         assert any("scheduler typo" in f.description for f in report.fixes)
 
     def test_model_name_whitespace(self):
@@ -130,7 +131,7 @@ class TestAutoFixRules:
         }
         fixer = ConfigFixer(data)
         fixer.run()
-        assert fixer.fixed_data["models"][0]["scheduler"] == "round_robin"
+        assert fixer.fixed_data["models"][0]["scheduler"] == "roundrobin"
 
     def test_models_shorthand_name_whitespace(self):
         data = {
@@ -289,7 +290,7 @@ class TestCombinedIssues:
         assert len(report.fixes) >= 3
         assert fixer.fixed_data["model"] == "llama-3"
         assert fixer.fixed_data["prefill"] == ["10.0.0.1:8000"]
-        assert fixer.fixed_data["scheduling"] == "round_robin"
+        assert fixer.fixed_data["scheduling"] == "roundrobin"
 
 
 class TestWriteMode:
@@ -298,7 +299,8 @@ class TestWriteMode:
     def test_write_creates_backup(self):
         data = {
             "model": " llama-3 ",
-            "decode": ["10.0.0.1:8000"],
+            "decode": ["10.0.0.1"],
+            "scheduling": "round_robbin",
         }
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = os.path.join(tmpdir, "test.yaml")
@@ -316,6 +318,9 @@ class TestWriteMode:
             with open(config_path) as f:
                 fixed = yaml.safe_load(f)
             assert fixed["model"] == "llama-3"
+            assert fixed["decode"] == ["10.0.0.1:8000"]
+            assert fixed["scheduling"] == "roundrobin"
+            assert ProxyConfig.from_yaml(config_path).scheduling == "roundrobin"
 
     def test_file_not_found(self):
         exit_code = run_fix_config("/nonexistent/path.yaml")
