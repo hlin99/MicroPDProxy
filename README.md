@@ -28,13 +28,12 @@ pip install xpyd
 ## Quick Start
 
 ```bash
-# Start with YAML config
-xpyd proxy --config proxy.yaml
+# Generate YAML: enter Y for the wizard, or wait 5s for the template
+xpyd proxy --init-config proxy.yaml
 
-# Or with CLI args
-xpyd proxy --model my-model \
-  --prefill 127.0.0.1:8001 \
-  --decode 127.0.0.1:8002
+# Validate and start with YAML config
+xpyd proxy --validate-config proxy.yaml
+xpyd proxy --config proxy.yaml
 ```
 
 ## Part of xPyD

@@ -1099,8 +1099,8 @@ def _build_parser():
     proxy_parser.add_argument(
         "--init-config", nargs="?", const="./xpyd.yaml", default=None,
         metavar="PATH",
-        help="Generate a default xpyd.yaml template and exit "
-             "(default: ./xpyd.yaml)",
+        help="Generate xpyd.yaml, optionally through an interactive wizard "
+             "(default path: ./xpyd.yaml)",
     )
     proxy_parser.add_argument(
         "--port", type=int, default=None,
@@ -1163,9 +1163,39 @@ def _resolve_config_path(args):
     sys.exit(1)
 
 
+def _print_config_summary(config: ProxyConfig) -> None:
+    """Print topology-aware details for a validated configuration."""
+    if config.instances is None:
+        topology = "disaggregated" if config.prefill else "decode-only"
+        print(f"  topology: {topology}")
+        if config.prefill:
+            print(f"  transfer: {config.disaggregated_mode}")
+        print(f"  model: {config.model}")
+        print(f"  prefill: {len(config.prefill)} instances")
+        print(f"  decode: {len(config.decode)} instances")
+    else:
+        roles = {instance.role for instance in config.instances}
+        topology = "aggregated" if roles == {"aggregated"} else "disaggregated"
+        print(f"  topology: {topology}")
+        if topology == "disaggregated":
+            print(f"  transfer: {config.disaggregated_mode}")
+        models = sorted({
+            instance.model for instance in config.instances if instance.model
+        })
+        print(f"  models: {', '.join(models) if models else 'auto-detected'}")
+        for role in ("aggregated", "prefill", "decode"):
+            count = sum(
+                instance.role == role for instance in config.instances
+            )
+            if count:
+                print(f"  {role}: {count} instances")
+    print(f"  port: {config.port}")
+    print(f"  log_level: {config.log_level}")
+
+
 def main() -> None:
     """Entry point for the ``xpyd`` CLI."""
-    from xpyd.init_config import generate_config_template
+    from xpyd.init_config import generate_config
 
     parser = _build_parser()
     args = parser.parse_args()
@@ -1180,7 +1210,7 @@ def main() -> None:
     elif args.command == "proxy":
         # --init-config: generate template and exit
         if args.init_config is not None:
-            generate_config_template(args.init_config)
+            generate_config(args.init_config)
             return
 
         # --validate-config: validate and exit
@@ -1189,11 +1219,7 @@ def main() -> None:
             try:
                 config = ProxyConfig.from_yaml(config_path)
                 print(f"Config is valid: {config_path}")
-                print(f"  model: {config.model}")
-                print(f"  prefill: {len(config.prefill)} instances")
-                print(f"  decode: {len(config.decode)} instances")
-                print(f"  port: {config.port}")
-                print(f"  log_level: {config.log_level}")
+                _print_config_summary(config)
                 sys.exit(0)
             except Exception as exc:
                 print(f"Config validation failed: {exc}", file=sys.stderr)
