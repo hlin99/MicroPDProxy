@@ -10,6 +10,8 @@ import pytest
 
 from xpyd.config import ProxyConfig
 from xpyd.proxy import (
+    Proxy,
+    ProxyServer,
     _build_parser,
     _normalize_cli_args,
     _print_config_summary,
@@ -332,6 +334,21 @@ class TestSubcommandParser:
         assert "aggregated: 2 instances" in output
         assert "prefill:" not in output
         assert "decode:" not in output
+
+    def test_proxy_server_does_not_contact_backends_during_construction(self):
+        config = ProxyConfig(
+            model="test-model",
+            prefill=["127.0.0.1:18100"],
+            decode=["127.0.0.1:18200"],
+            health_check={"enabled": True},
+        )
+
+        with patch.object(Proxy, "ensure_tokenizer") as ensure_tokenizer:
+            server = ProxyServer(config)
+
+        ensure_tokenizer.assert_not_called()
+        assert server._all_prefill == ["127.0.0.1:18100"]
+        assert server._all_decode == ["127.0.0.1:18200"]
 
     @pytest.mark.parametrize(
         ("response", "expected"),
