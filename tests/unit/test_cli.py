@@ -113,11 +113,17 @@ class TestSubcommandParser:
         assert 'role: "aggregated"' in content
         assert "decode:" not in content
         config = ProxyConfig.from_yaml(out)
-        assert config.model == "my-model"
+        assert config.model == "deepseek-ai/DeepSeek-V4-Flash"
         assert [
             (instance.role, instance.address, instance.model)
             for instance in config.instances
-        ] == [("aggregated", "10.0.0.1:8100", "my-model")]
+        ] == [
+            (
+                "aggregated",
+                "10.0.0.1:8100",
+                "deepseek-ai/DeepSeek-V4-Flash",
+            )
+        ]
         assert config.health_check.enabled is True
 
     def test_init_config_custom_path(self, tmp_path):

@@ -17,7 +17,7 @@ Below is the complete schema with every supported field.
 # MicroDisaggregatedProxy Configuration
 
 # Server
-model: my-model                # required in legacy single-model mode
+model: deepseek-ai/DeepSeek-V4-Flash  # required in legacy single-model mode
 # Optional local root; model "org/name" maps to "<root>/org/name/"
 # tokenizer_path: /models/tokenizers
 port: 8000                      # default: 8000

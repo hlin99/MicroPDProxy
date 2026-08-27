@@ -18,7 +18,7 @@ _TEMPLATE = """\
 # Docs: https://github.com/xPyD-hub/xPyD-proxy
 
 # Required: model name served by this proxy
-model: "my-model"
+model: "deepseek-ai/DeepSeek-V4-Flash"
 
 # Optional: local tokenizer root. Model "org/name" is loaded from
 # "<tokenizer_path>/org/name/". Without this setting, xPyD downloads the
@@ -29,7 +29,7 @@ model: "my-model"
 instances:
   - address: "10.0.0.1:8100"
     role: "aggregated"
-    model: "my-model"
+    model: "deepseek-ai/DeepSeek-V4-Flash"
 
 # Server port (default: 8000)
 port: 8000
@@ -495,7 +495,7 @@ def generate_interactive_config(output_path: str) -> None:
         default="disaggregated",
         choices=("aggregated", "disaggregated"),
     )
-    model = _prompt("Model name", default="my-model")
+    model = _prompt("Model name", default="deepseek-ai/DeepSeek-V4-Flash")
     instances = []
     disaggregated_mode = None
     zmq_config = None
