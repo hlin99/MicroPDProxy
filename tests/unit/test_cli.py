@@ -110,10 +110,15 @@ class TestSubcommandParser:
         assert out.exists()
         content = out.read_text()
         assert "model:" in content
-        assert "decode:" in content
+        assert 'role: "aggregated"' in content
+        assert "decode:" not in content
         config = ProxyConfig.from_yaml(out)
         assert config.model == "my-model"
-        assert config.decode == ["10.0.0.1:8000"]
+        assert [
+            (instance.role, instance.address, instance.model)
+            for instance in config.instances
+        ] == [("aggregated", "10.0.0.1:8100", "my-model")]
+        assert config.health_check.enabled is True
 
     def test_init_config_custom_path(self, tmp_path):
         from xpyd.init_config import generate_config_template

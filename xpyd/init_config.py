@@ -25,14 +25,11 @@ model: "my-model"
 # tokenizer and falls back to roundrobin if the download fails.
 # tokenizer_path: "/models/tokenizers"
 
-# Required: at least one decode instance
-# Can be a flat list or topology dict
-decode:
-  - "10.0.0.1:8000"
-
-# Optional: prefill instances (for disaggregated prefill/decode)
-# prefill:
-#   - "10.0.0.2:8000"
+# Default topology: one backend performs both prefill and decode
+instances:
+  - address: "10.0.0.1:8100"
+    role: "aggregated"
+    model: "my-model"
 
 # Server port (default: 8000)
 port: 8000
@@ -43,9 +40,6 @@ log_level: "warning"
 # Scheduling policy: loadbalanced | roundrobin | consistent_hash | power_of_two | cache_aware
 scheduling: "loadbalanced"
 
-# Backend that provides the first client-visible token: prefill | decode
-first_token_source: "decode"
-
 # Startup probe settings
 startup:
   wait_timeout_seconds: 600
@@ -54,7 +48,7 @@ startup:
 
 # Health check configuration
 health_check:
-  enabled: false
+  enabled: true
   interval_seconds: 10.0
   timeout_seconds: 3.0
 
