@@ -29,11 +29,11 @@ pip install xpyd
 
 ```bash
 # Generate YAML: enter Y for the wizard, or wait 5s for the template
-xpyd proxy --init-config proxy.yaml
+xpyd --init-config proxy.yaml
 
 # Validate and start with YAML config
-xpyd proxy --validate-config proxy.yaml
-xpyd proxy --config proxy.yaml
+xpyd --validate-config proxy.yaml
+xpyd --config proxy.yaml
 ```
 
 ## Part of xPyD
