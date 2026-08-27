@@ -110,7 +110,7 @@ class TestSubcommandParser:
         assert "model:" in content
         assert "decode:" in content
         config = ProxyConfig.from_yaml(out)
-        assert config.model == "my-model"
+        assert config.model == "deepseek-ai/DeepSeek-V4-Flash"
         assert config.decode == ["10.0.0.1:8000"]
 
     def test_init_config_custom_path(self, tmp_path):

@@ -10,8 +10,8 @@
 # ============================================================
 # Server
 # ============================================================
-model: my-model                 # required in legacy single-model mode
-# tokenizer_path: /models/tokenizers  # optional local root; my-model/ must exist
+model: deepseek-ai/DeepSeek-V4-Flash  # required in legacy single-model mode
+# tokenizer_path: /models/tokenizers  # local root; deepseek-ai/DeepSeek-V4-Flash/ must exist
 port: 8868                      # proxy listen port (default: 8000)
 log_level: warning              # debug | info | warning | error
 
