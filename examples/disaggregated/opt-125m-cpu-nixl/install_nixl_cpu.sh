@@ -5,13 +5,9 @@ set -euo pipefail
 NIXL_VERSION="${NIXL_VERSION:-v1.3.0}"
 VLLM_VERSION="${VLLM_VERSION:-0.25.0}"
 export WHEELS_CACHE_HOME="${WHEELS_CACHE_HOME:-${HOME}/.cache/xpyd-nixl-wheels}"
-DEFAULT_UCX_NET_DEVICE=""
-if [[ -r /proc/net/route ]]; then
-    DEFAULT_UCX_NET_DEVICE="$(
-        awk '$2 == "00000000" {print $1; exit}' /proc/net/route
-    )"
-fi
-export UCX_NET_DEVICES="${UCX_NET_DEVICES:-${DEFAULT_UCX_NET_DEVICE:-all}}"
+# This example runs every P/D process on one host. Loopback avoids depending
+# on cloud-runner NIC metadata; multi-host users can override this variable.
+export UCX_NET_DEVICES="${UCX_NET_DEVICES:-lo}"
 
 mkdir -p "${WHEELS_CACHE_HOME}"
 

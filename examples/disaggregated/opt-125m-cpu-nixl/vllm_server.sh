@@ -7,12 +7,6 @@ ROLE="${1:?usage: vllm_server.sh <prefill|decode> <http-port> <side-channel-port
 PORT="${2:?usage: vllm_server.sh <prefill|decode> <http-port> <side-channel-port>}"
 SIDE_CHANNEL_PORT="${3:?usage: vllm_server.sh <prefill|decode> <http-port> <side-channel-port>}"
 MODEL_DIR="${MODEL_DIR:-/tmp/tokenizers/facebook/opt-125m}"
-DEFAULT_UCX_NET_DEVICE=""
-if [[ -r /proc/net/route ]]; then
-    DEFAULT_UCX_NET_DEVICE="$(
-        awk '$2 == "00000000" {print $1; exit}' /proc/net/route
-    )"
-fi
 
 case "${ROLE}" in
     prefill)
@@ -31,7 +25,7 @@ export GLOO_SOCKET_IFNAME="${GLOO_SOCKET_IFNAME:-lo}"
 export HF_HUB_OFFLINE=1
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export TRANSFORMERS_OFFLINE=1
-export UCX_NET_DEVICES="${UCX_NET_DEVICES:-${DEFAULT_UCX_NET_DEVICE:-all}}"
+export UCX_NET_DEVICES="${UCX_NET_DEVICES:-lo}"
 export UCX_TLS="${UCX_TLS:-tcp}"
 export NIXL_TELEMETRY_ENABLE="${NIXL_TELEMETRY_ENABLE:-y}"
 export NIXL_TELEMETRY_DIR="${NIXL_TELEMETRY_DIR:-${SCRIPT_DIR}/logs/nixl-telemetry}"

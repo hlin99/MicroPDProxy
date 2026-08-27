@@ -3,12 +3,33 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+import asyncio
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from xpyd.discovery import NodeDiscovery
 
 
 class TestDiscoveryAggregatedReady:
+    @pytest.mark.asyncio()
+    async def test_discovery_continues_after_wait_timeout(self):
+        discovery = NodeDiscovery(
+            prefill_instances=["127.0.0.1:18100"],
+            decode_instances=["127.0.0.1:18200"],
+            probe_interval=0.005,
+            wait_timeout=0.01,
+        )
+        discovery._probe_all = AsyncMock()
+
+        await discovery.start()
+        await asyncio.sleep(0.03)
+
+        assert discovery._task is not None
+        assert discovery._task.done() is False
+        assert discovery._timeout_reported is True
+        await discovery.stop()
+
     def test_heartbeat_mode_uses_only_configured_roles(self):
         disaggregated = NodeDiscovery(
             prefill_instances=["10.0.0.1:8000"],
@@ -79,6 +100,15 @@ class TestDiscoveryAggregatedReady:
         d.healthy_prefill.add("10.0.0.1:8000")
         d.healthy_decode.add("10.0.0.2:8000")
         assert d.is_ready is True
+
+    def test_decode_only_is_ready(self):
+        discovery = NodeDiscovery(
+            prefill_instances=[],
+            decode_instances=["10.0.0.2:8000"],
+        )
+        discovery.healthy_decode.add("10.0.0.2:8000")
+
+        assert discovery.is_ready is True
 
     def test_disaggregated_missing_decode_not_ready(self):
         """disaggregated missing decode: not ready."""

@@ -41,10 +41,10 @@ jobs:
           set -euxo pipefail
           tmpdir="$(mktemp -d)"
 
-          printf 'n\n' | xpyd proxy --init-config "$tmpdir/generated.yaml"
-          xpyd proxy --validate-config "$tmpdir/generated.yaml"
+          printf 'n\n' | xpyd --init-config "$tmpdir/generated.yaml"
+          xpyd --validate-config "$tmpdir/generated.yaml"
 
-          xpyd proxy --init-config "$tmpdir/interactive.yaml" <<'EOF'
+          xpyd --init-config "$tmpdir/interactive.yaml" <<'EOF'
           y
           aggregated
           ci-model
@@ -58,7 +58,11 @@ jobs:
           loadbalanced
           y
           EOF
-          xpyd proxy --validate-config "$tmpdir/interactive.yaml"
+          xpyd --validate-config "$tmpdir/interactive.yaml"
+
+          mkdir "$tmpdir/auto"
+          (cd "$tmpdir/auto" && printf 'n\n' | xpyd)
+          xpyd proxy --validate-config "$tmpdir/auto/xpyd.yaml"
 
           cat > "$tmpdir/fixable.yaml" <<'YAML'
           model: demo
@@ -67,12 +71,13 @@ jobs:
           scheduling: round_robbin
           YAML
 
-          if xpyd proxy --validate-config "$tmpdir/fixable.yaml"; then
+          if xpyd --validate-config "$tmpdir/fixable.yaml"; then
             echo "Expected invalid config to fail validation" >&2
             exit 1
           fi
 
           xpyd fix-config "$tmpdir/fixable.yaml" --write
-          xpyd proxy --validate-config "$tmpdir/fixable.yaml"
+          xpyd --validate-config "$tmpdir/fixable.yaml"
+          xpyd proxy fix-config "$tmpdir/fixable.yaml"
           test "$(find "$tmpdir" -name '*.bak' -type f | wc -l)" -eq 1
       - run: pip install pytest pytest-asyncio && python -m pytest tests/unit/ -v --tb=short

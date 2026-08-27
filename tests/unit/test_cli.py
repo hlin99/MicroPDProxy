@@ -9,7 +9,15 @@ from unittest.mock import patch
 import pytest
 
 from xpyd.config import ProxyConfig
-from xpyd.proxy import _build_parser, _print_config_summary, _resolve_config_path
+from xpyd.proxy import (
+    Proxy,
+    ProxyServer,
+    _build_parser,
+    _normalize_cli_args,
+    _print_config_summary,
+    _resolve_config_path,
+    main,
+)
 
 
 class TestSubcommandParser:
@@ -62,10 +70,31 @@ class TestSubcommandParser:
         assert args.command == "proxy"
         assert args.config == "test.yaml"
 
-    def test_no_subcommand_shows_help(self):
+    def test_proxy_help_marks_subcommand_optional(self, capsys):
         parser = _build_parser()
-        args = parser.parse_args([])
-        assert args.command is None
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["proxy", "--help"])
+        assert exc_info.value.code == 0
+        assert "usage: xpyd [proxy]" in capsys.readouterr().out
+
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            ([], ["proxy"]),
+            (["-c", "config.yaml"], ["proxy", "-c", "config.yaml"]),
+            (["--init-config"], ["proxy", "--init-config"]),
+            (["proxy", "-c", "config.yaml"], ["proxy", "-c", "config.yaml"]),
+            (["fix-config", "config.yaml"], ["fix-config", "config.yaml"]),
+            (
+                ["proxy", "fix-config", "config.yaml"],
+                ["fix-config", "config.yaml"],
+            ),
+            (["--version"], ["--version"]),
+            (["proxy", "--version"], ["--version"]),
+        ],
+    )
+    def test_proxy_is_default_subcommand(self, argv, expected):
+        assert _normalize_cli_args(argv) == expected
 
     def test_version_flag(self, capsys):
         parser = _build_parser()
@@ -81,10 +110,15 @@ class TestSubcommandParser:
         assert out.exists()
         content = out.read_text()
         assert "model:" in content
-        assert "decode:" in content
+        assert 'role: "aggregated"' in content
+        assert "decode:" not in content
         config = ProxyConfig.from_yaml(out)
         assert config.model == "my-model"
-        assert config.decode == ["10.0.0.1:8000"]
+        assert [
+            (instance.role, instance.address, instance.model)
+            for instance in config.instances
+        ] == [("aggregated", "10.0.0.1:8100", "my-model")]
+        assert config.health_check.enabled is True
 
     def test_init_config_custom_path(self, tmp_path):
         from xpyd.init_config import generate_config_template
@@ -306,6 +340,21 @@ class TestSubcommandParser:
         assert "prefill:" not in output
         assert "decode:" not in output
 
+    def test_proxy_server_does_not_contact_backends_during_construction(self):
+        config = ProxyConfig(
+            model="test-model",
+            prefill=["127.0.0.1:18100"],
+            decode=["127.0.0.1:18200"],
+            health_check={"enabled": True},
+        )
+
+        with patch.object(Proxy, "ensure_tokenizer") as ensure_tokenizer:
+            server = ProxyServer(config)
+
+        ensure_tokenizer.assert_not_called()
+        assert server._all_prefill == ["127.0.0.1:18100"]
+        assert server._all_decode == ["127.0.0.1:18200"]
+
     @pytest.mark.parametrize(
         ("response", "expected"),
         [("y\n", True), ("YES\n", True), ("n\n", False), ("\n", False)],
@@ -380,15 +429,28 @@ class TestSubcommandParser:
         )
         assert args.first_token_source == "prefill"
 
-    def test_no_config_file_error_message(self, tmp_path, monkeypatch):
+    def test_no_config_file_returns_none(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         env = {k: v for k, v in os.environ.items() if k != "XPYD_CONFIG"}
         parser = _build_parser()
         args = parser.parse_args(["proxy"])
         with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(SystemExit) as exc_info:
-                _resolve_config_path(args)
-            assert exc_info.value.code == 1
+            assert _resolve_config_path(args) is None
+
+    def test_no_args_initializes_missing_default_config(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr("sys.argv", ["xpyd"])
+        env = {k: v for k, v in os.environ.items() if k != "XPYD_CONFIG"}
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("xpyd.init_config.generate_config") as generate,
+        ):
+            main()
+
+        generate.assert_called_once_with("./xpyd.yaml")
+        assert "starting config initialization" in capsys.readouterr().out
 
     def test_old_args_rejected(self):
         parser = _build_parser()
@@ -419,7 +481,7 @@ class TestConfigResolution:
         with patch.dict(os.environ, {"XPYD_CONFIG": "env.yaml"}):
             assert _resolve_config_path(args) == "env.yaml"
 
-    def test_default_file_fallback(self, tmp_path, monkeypatch):
+    def test_default_file_fallback(self, tmp_path, monkeypatch, capsys):
         (tmp_path / "xpyd.yaml").write_text("model: test\n")
         monkeypatch.chdir(tmp_path)
         parser = _build_parser()
@@ -427,5 +489,8 @@ class TestConfigResolution:
         env = {k: v for k, v in os.environ.items() if k != "XPYD_CONFIG"}
         with patch.dict(os.environ, env, clear=True):
             result = _resolve_config_path(args)
-        assert result is not None
-        assert result.endswith("xpyd.yaml")
+        assert result == "./xpyd.yaml"
+        assert (
+            "No config specified; found ./xpyd.yaml and using it."
+            in capsys.readouterr().out
+        )

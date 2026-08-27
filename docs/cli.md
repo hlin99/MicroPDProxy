@@ -16,6 +16,8 @@ pip install -e .
 ```
 
 After installation, the `xpyd` command is available system-wide.
+The `proxy` subcommand is optional for every command and option: `xpyd ...`
+and `xpyd proxy ...` are equivalent.
 
 ## Quick Start
 
@@ -41,6 +43,10 @@ requests.
 
 The proxy configuration is YAML-only. Legacy arguments such as `--model`,
 `--prefill`, and `--decode` are not supported.
+
+When neither `--config` nor `XPYD_CONFIG` is set, `xpyd` uses `./xpyd.yaml`
+and prints that choice. If the file does not exist, it automatically starts
+the `--init-config` flow and exits after creating it.
 
 ## Startup Node Discovery
 
@@ -99,13 +105,13 @@ xpyd
 ### Validate configuration without starting
 
 ```bash
-xpyd proxy --validate-config proxy.yaml
+xpyd --validate-config proxy.yaml
 # Output: Config is valid: proxy.yaml
 # Exit code: 0
 ```
 
 ```bash
-xpyd proxy --validate-config bad.yaml
+xpyd --validate-config bad.yaml
 # Output: Configuration error: "model" is required
 # Exit code: 1
 ```
@@ -113,7 +119,7 @@ xpyd proxy --validate-config bad.yaml
 ### Generate configuration
 
 ```bash
-xpyd proxy --init-config proxy.yaml
+xpyd --init-config proxy.yaml
 ```
 
 Enter `Y` within five seconds to use the wizard. Its first question selects an
@@ -121,7 +127,10 @@ Enter `Y` within five seconds to use the wizard. Its first question selects an
 appropriate instance counts and addresses, tokenizer path, port, logging,
 scheduling, first-token source (for disaggregated deployments), and health
 checks. Enter `N` or wait five seconds to generate the documented template
-instead. Wizard-generated files are validated before they are written.
+instead. The default template uses one aggregated backend at
+`10.0.0.1:8100`; choose the wizard's `disaggregated` topology to configure
+separate Prefill and Decode nodes. Wizard-generated files are validated before
+they are written.
 Defaults are underlined in interactive terminals; pressing Enter selects the
 underlined value.
 

@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
 import aiohttp
-import requests
 import uvicorn
 from fastapi import (APIRouter, FastAPI, HTTPException,
                      Request)
@@ -814,10 +813,6 @@ class ProxyServer:
                                                   StreamingResponse]] = None,
     ):
         self.config = config
-        # Skip model verification for multi-model (instances) config
-        if config.instances is None:
-            self.verify_model_config(config.prefill, config.model)
-            self.verify_model_config(config.decode, config.model)
         self.port = config.port
 
         # Create instance registry and register all instances
@@ -958,28 +953,6 @@ class ProxyServer:
             disaggregated_mode=config.disaggregated_mode,
             zmq_config=config.zmq,
         )
-        configured_models = self.registry.get_registered_models()
-        if not configured_models and config.model:
-            configured_models = [config.model]
-        for model_name in configured_models:
-            self.proxy_instance.ensure_tokenizer(model_name)
-
-    def verify_model_config(self, instances: list, model: str) -> None:
-        for instance in instances:
-            try:
-                response = requests.get(f"http://{instance}/v1/models")
-                if response.status_code == 200:
-                    model_cur = response.json()["data"][0]["id"]
-                    if model_cur != model:
-                        raise ValueError(
-                            f"{instance} serves a different model: "
-                            f"{model_cur} != {model}")
-                else:
-                    raise ValueError(f"Cannot get model id from {instance}!")
-            except requests.RequestException as e:
-                raise ValueError(
-                    f"Error communicating with {instance}: {str(e)}") from e
-
     def run_server(self) -> None:
         discovery = NodeDiscovery(
             prefill_instances=self._all_prefill,
@@ -1086,7 +1059,9 @@ def _build_parser():
     subparsers = parser.add_subparsers(dest="command")
 
     proxy_parser = subparsers.add_parser(
-        "proxy", help="Start the proxy server",
+        "proxy",
+        prog="xpyd [proxy]",
+        help="Start the proxy server (default command)",
     )
     proxy_parser.add_argument(
         "--config", "-c", type=str, default=None,
@@ -1140,27 +1115,35 @@ def _build_parser():
     return parser
 
 
+def _normalize_cli_args(argv: list[str]) -> list[str]:
+    """Treat omitted subcommands as the default ``proxy`` command."""
+    if argv and argv[0] == "proxy":
+        if len(argv) > 1 and argv[1] in {"fix-config", "--version", "-V"}:
+            return argv[1:]
+        return argv
+    if argv and argv[0] in {"fix-config", "--version", "-V"}:
+        return argv
+    return ["proxy", *argv]
+
+
 def _resolve_config_path(args):
     """Resolve the config file path: --config > XPYD_CONFIG env > ./xpyd.yaml.
 
-    Returns the path string, or raises ``SystemExit`` with a helpful
-    error message when no config can be found.
+    Returns the path string, or ``None`` when no config can be found.
     """
     if args.config:
         return args.config
     env_config = os.environ.get("XPYD_CONFIG")
     if env_config:
         return env_config
-    default_path = os.path.join(os.getcwd(), "xpyd.yaml")
+    default_path = "./xpyd.yaml"
     if os.path.exists(default_path):
+        print(
+            "No config specified; found ./xpyd.yaml and using it.",
+            flush=True,
+        )
         return default_path
-    print(
-        "Error: No config file found.\n\n"
-        "Create one with:  xpyd proxy --init-config\n"
-        "Or specify one:   xpyd proxy --config /path/to/config.yaml",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+    return None
 
 
 def _print_config_summary(config: ProxyConfig) -> None:
@@ -1198,7 +1181,7 @@ def main() -> None:
     from xpyd.init_config import generate_config
 
     parser = _build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(_normalize_cli_args(sys.argv[1:]))
 
     if args.command == "fix-config":
         from xpyd.config_fixer import run_fix_config
@@ -1227,6 +1210,14 @@ def main() -> None:
 
         # Resolve config path with precedence
         config_path = _resolve_config_path(args)
+        if config_path is None:
+            config_path = "./xpyd.yaml"
+            print(
+                "No config specified and ./xpyd.yaml was not found; "
+                "starting config initialization."
+            )
+            generate_config(config_path)
+            return
         config = ProxyConfig.from_yaml(config_path)
 
         # Apply CLI overrides
