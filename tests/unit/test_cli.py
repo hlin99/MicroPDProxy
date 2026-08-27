@@ -19,11 +19,14 @@ class TestSubcommandParser:
         from xpyd.init_config import _prompt
 
         with patch("builtins.input", return_value="") as input_mock:
-            assert _prompt(
-                "Deployment topology",
-                default="disaggregated",
-                choices=("aggregated", "disaggregated"),
-            ) == "disaggregated"
+            assert (
+                _prompt(
+                    "Deployment topology",
+                    default="disaggregated",
+                    choices=("aggregated", "disaggregated"),
+                )
+                == "disaggregated"
+            )
 
         input_mock.assert_called_once_with(
             "Deployment topology (aggregated/disaggregated) [disaggregated]: "
@@ -45,10 +48,13 @@ class TestSubcommandParser:
         from xpyd.init_config import _prompt
 
         with patch("builtins.input", return_value="AGGREGATED"):
-            assert _prompt(
-                "Topology",
-                choices=("aggregated", "disaggregated"),
-            ) == "aggregated"
+            assert (
+                _prompt(
+                    "Topology",
+                    choices=("aggregated", "disaggregated"),
+                )
+                == "aggregated"
+            )
 
     def test_proxy_subcommand_parses(self):
         parser = _build_parser()
@@ -101,24 +107,26 @@ class TestSubcommandParser:
         from xpyd.init_config import generate_interactive_config
 
         out = tmp_path / "interactive.yaml"
-        answers = iter([
-            "disaggregated",
-            "my-org/my-model",
-            "nixl",
-            "1",
-            "2",
-            "same",
-            "8000",
-            "10.0.0.1",
-            "per-instance",
-            "10.0.0.2:8000, 10.0.0.3:8000",
-            "/models/tokenizers",
-            "9000",
-            "info",
-            "roundrobin",
-            "prefill",
-            "y",
-        ])
+        answers = iter(
+            [
+                "disaggregated",
+                "my-org/my-model",
+                "nixl",
+                "1",
+                "2",
+                "same",
+                "8000",
+                "10.0.0.1",
+                "per-instance",
+                "10.0.0.2:8000, 10.0.0.3:8000",
+                "/models/tokenizers",
+                "9000",
+                "info",
+                "roundrobin",
+                "prefill",
+                "y",
+            ]
+        )
         with patch("builtins.input", side_effect=answers):
             generate_interactive_config(str(out))
 
@@ -140,29 +148,31 @@ class TestSubcommandParser:
         from xpyd.init_config import generate_interactive_config
 
         out = tmp_path / "zmq.yaml"
-        answers = iter([
-            "disaggregated",
-            "my-model",
-            "zmq",
-            "1",
-            "2",
-            "same",
-            "8100",
-            "10.0.0.1",
-            "per-instance",
-            "10.0.0.2:8200,10.0.0.3:8201",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-        ])
+        answers = iter(
+            [
+                "disaggregated",
+                "my-model",
+                "zmq",
+                "1",
+                "2",
+                "same",
+                "8100",
+                "10.0.0.1",
+                "per-instance",
+                "10.0.0.2:8200,10.0.0.3:8201",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
         with patch("builtins.input", side_effect=answers):
             generate_interactive_config(str(out))
 
@@ -180,19 +190,21 @@ class TestSubcommandParser:
         from xpyd.init_config import generate_interactive_config
 
         out = tmp_path / "aggregated.yaml"
-        answers = iter([
-            "aggregated",
-            "my-org/my-model",
-            "2",
-            "same",
-            "8000",
-            "10.0.0.1-10.0.0.2",
-            "",
-            "",
-            "",
-            "",
-            "",
-        ])
+        answers = iter(
+            [
+                "aggregated",
+                "my-org/my-model",
+                "2",
+                "same",
+                "8000",
+                "10.0.0.1-10.0.0.2",
+                "",
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
         with patch("builtins.input", side_effect=answers):
             generate_interactive_config(str(out))
 
@@ -208,8 +220,7 @@ class TestSubcommandParser:
         from xpyd.init_config import _expand_address_input
 
         addresses = _expand_address_input(
-            "192.168.0.1, 192.168.0.2:9000 "
-            "192.168.0.3-192.168.0.4",
+            "192.168.0.1, 192.168.0.2:9000 " "192.168.0.3-192.168.0.4",
             default_port=8100,
         )
 
@@ -224,8 +235,7 @@ class TestSubcommandParser:
         from xpyd.init_config import _expand_address_input
 
         addresses = _expand_address_input(
-            "192.168.0.1:8100-8102 "
-            "192.168.0.2-192.168.0.4:8200-8202",
+            "192.168.0.1:8100-8102 " "192.168.0.2-192.168.0.4:8200-8202",
             default_port=8000,
             require_explicit_port=True,
         )
