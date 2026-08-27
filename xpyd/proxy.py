@@ -965,7 +965,6 @@ class ProxyServer:
             on_model_discovered=lambda model: asyncio.to_thread(
                 self.proxy_instance.ensure_tokenizer, model
             ),
-            stop_on_timeout=False,
         )
 
         app = FastAPI()

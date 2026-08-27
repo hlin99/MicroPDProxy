@@ -8,23 +8,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from xpyd.discovery import DiscoveryTimeout, NodeDiscovery
+from xpyd.discovery import NodeDiscovery
 
 
 class TestDiscoveryAggregatedReady:
-    @pytest.mark.asyncio()
-    async def test_discovery_timeout_remains_available_for_direct_users(self):
-        discovery = NodeDiscovery(
-            prefill_instances=["127.0.0.1:18100"],
-            decode_instances=["127.0.0.1:18200"],
-            probe_interval=0.005,
-            wait_timeout=0.01,
-        )
-        discovery._probe_all = AsyncMock()
-
-        with pytest.raises(DiscoveryTimeout):
-            await discovery._probe_loop()
-
     @pytest.mark.asyncio()
     async def test_discovery_continues_after_wait_timeout(self):
         discovery = NodeDiscovery(
@@ -32,7 +19,6 @@ class TestDiscoveryAggregatedReady:
             decode_instances=["127.0.0.1:18200"],
             probe_interval=0.005,
             wait_timeout=0.01,
-            stop_on_timeout=False,
         )
         discovery._probe_all = AsyncMock()
 

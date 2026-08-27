@@ -22,10 +22,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("xpyd.proxy")
 
 
-class DiscoveryTimeout(Exception):
-    """Raised when discovery fails to find minimum nodes within timeout."""
-
-
 class NodeDiscovery:
     """Background node health prober.
 
@@ -47,7 +43,6 @@ class NodeDiscovery:
         on_model_discovered: Optional[
             Callable[[str], Awaitable[None] | None]
         ] = None,
-        stop_on_timeout: bool = True,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -57,7 +52,6 @@ class NodeDiscovery:
         self.heartbeat_interval = heartbeat_interval
         self.registry = registry
         self.on_model_discovered = on_model_discovered
-        self.stop_on_timeout = stop_on_timeout
 
         self.healthy_prefill: Set[str] = set()
         self.healthy_decode: Set[str] = set()
@@ -104,7 +98,7 @@ class NodeDiscovery:
             self._task.cancel()
             try:
                 await self._task
-            except (asyncio.CancelledError, DiscoveryTimeout):
+            except asyncio.CancelledError:
                 pass
 
     async def wait_until_ready(self) -> bool:
@@ -142,11 +136,6 @@ class NodeDiscovery:
                     and not self.is_ready
                     and not self._timeout_reported
                 ):
-                    if self.stop_on_timeout:
-                        raise DiscoveryTimeout(
-                            "No minimum backend nodes "
-                            f"after {elapsed:.0f}s"
-                        )
                     logger.warning(
                         "Backend nodes are still unavailable after %.0fs; "
                         "continuing discovery",
