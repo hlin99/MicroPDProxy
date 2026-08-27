@@ -127,7 +127,9 @@ Enter `Y` within five seconds to use the wizard. Its first question selects an
 appropriate instance counts and addresses, tokenizer path, port, logging,
 scheduling, first-token source (for disaggregated deployments), and health
 checks. Enter `N` or wait five seconds to generate the documented template
-instead. Wizard-generated files are validated before they are written.
+instead. The default template uses one aggregated backend at
+`10.0.0.1:8100`; choose the wizard's `disaggregated` topology to configure
+separate Prefill and Decode nodes. Wizard-generated files are validated before they are written.
 Defaults are underlined in interactive terminals; pressing Enter selects the
 underlined value.
 
