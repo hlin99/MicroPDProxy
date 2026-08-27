@@ -22,10 +22,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("xpyd.proxy")
 
 
-class DiscoveryTimeout(Exception):
-    """Raised when discovery fails to find minimum nodes within timeout."""
-
-
 class NodeDiscovery:
     """Background node health prober.
 
@@ -63,11 +59,20 @@ class NodeDiscovery:
         self._ready = asyncio.Event()
         self._task: asyncio.Task | None = None
         self._last_heartbeat: float | None = None
+        self._timeout_reported = False
+        self._notified_models: Set[str] = set()
 
     @property
     def is_ready(self) -> bool:
-        """True when at least 1 prefill + 1 decode node are healthy, or at least 1 aggregated node is healthy."""
-        has_disaggregated = len(self.healthy_prefill) >= 1 and len(self.healthy_decode) >= 1
+        """True when the configured topology has enough healthy nodes."""
+        has_disaggregated = (
+            bool(self.decode_instances)
+            and len(self.healthy_decode) >= 1
+            and (
+                not self.prefill_instances
+                or len(self.healthy_prefill) >= 1
+            )
+        )
         has_aggregated = len(self.healthy_aggregated) >= 1
         return has_disaggregated or has_aggregated
 
@@ -78,7 +83,7 @@ class NodeDiscovery:
 
     @staticmethod
     def _on_probe_done(task: asyncio.Task) -> None:
-        """Stop the event loop if the probe loop ended with a timeout."""
+        """Stop the event loop if the probe loop fails unexpectedly."""
         if task.cancelled():
             return
         exc = task.exception()
@@ -93,7 +98,7 @@ class NodeDiscovery:
             self._task.cancel()
             try:
                 await self._task
-            except (asyncio.CancelledError, DiscoveryTimeout):
+            except asyncio.CancelledError:
                 pass
 
     async def wait_until_ready(self) -> bool:
@@ -126,13 +131,17 @@ class NodeDiscovery:
                     )
 
                 elapsed = time.monotonic() - start_time
-                if elapsed >= self.wait_timeout and not self.is_ready:
-                    logger.error(
-                        "Timeout waiting for backend nodes after %.0fs", elapsed
+                if (
+                    elapsed >= self.wait_timeout
+                    and not self.is_ready
+                    and not self._timeout_reported
+                ):
+                    logger.warning(
+                        "Backend nodes are still unavailable after %.0fs; "
+                        "continuing discovery",
+                        elapsed,
                     )
-                    raise DiscoveryTimeout(
-                        f"No minimum nodes (1P+1D or 1 aggregated) after {elapsed:.0f}s"
-                    )
+                    self._timeout_reported = True
 
                 await asyncio.sleep(self.probe_interval)
 
@@ -243,7 +252,8 @@ class NodeDiscovery:
         try:
             info = self.registry.get_instance_info(instance)
             if info.model:
-                return  # model already set — no need to probe
+                await self._notify_model_discovered(info.model)
+                return
         except KeyError:
             return  # instance not in registry
         detected_model = ""
@@ -278,12 +288,18 @@ class NodeDiscovery:
             )
             return
         if detected_model:
-            if self.on_model_discovered is not None:
-                result = self.on_model_discovered(detected_model)
-                if inspect.isawaitable(result):
-                    await result
+            await self._notify_model_discovered(detected_model)
             logger.info(
                 "Auto-detected model %r on %s",
                 detected_model,
                 instance,
             )
+
+    async def _notify_model_discovered(self, model: str) -> None:
+        if model in self._notified_models:
+            return
+        self._notified_models.add(model)
+        if self.on_model_discovered is not None:
+            result = self.on_model_discovered(model)
+            if inspect.isawaitable(result):
+                await result

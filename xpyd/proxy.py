@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional, cast
 
 import aiohttp
-import requests
 import uvicorn
 from fastapi import (APIRouter, FastAPI, HTTPException,
                      Request)
@@ -814,10 +813,6 @@ class ProxyServer:
                                                   StreamingResponse]] = None,
     ):
         self.config = config
-        # Skip model verification for multi-model (instances) config
-        if config.instances is None:
-            self.verify_model_config(config.prefill, config.model)
-            self.verify_model_config(config.decode, config.model)
         self.port = config.port
 
         # Create instance registry and register all instances
@@ -958,28 +953,6 @@ class ProxyServer:
             disaggregated_mode=config.disaggregated_mode,
             zmq_config=config.zmq,
         )
-        configured_models = self.registry.get_registered_models()
-        if not configured_models and config.model:
-            configured_models = [config.model]
-        for model_name in configured_models:
-            self.proxy_instance.ensure_tokenizer(model_name)
-
-    def verify_model_config(self, instances: list, model: str) -> None:
-        for instance in instances:
-            try:
-                response = requests.get(f"http://{instance}/v1/models")
-                if response.status_code == 200:
-                    model_cur = response.json()["data"][0]["id"]
-                    if model_cur != model:
-                        raise ValueError(
-                            f"{instance} serves a different model: "
-                            f"{model_cur} != {model}")
-                else:
-                    raise ValueError(f"Cannot get model id from {instance}!")
-            except requests.RequestException as e:
-                raise ValueError(
-                    f"Error communicating with {instance}: {str(e)}") from e
-
     def run_server(self) -> None:
         discovery = NodeDiscovery(
             prefill_instances=self._all_prefill,

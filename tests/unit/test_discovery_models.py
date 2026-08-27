@@ -181,6 +181,25 @@ class TestProbeModels:
         info = reg.get_instance_info("10.0.0.1:8000")
         assert info.model == "llama-3"
 
+    @pytest.mark.asyncio
+    async def test_known_model_triggers_tokenizer_callback(self):
+        registry = InstanceRegistry()
+        registry.add("decode", "10.0.0.1:8000", model="known-model")
+        callback = AsyncMock()
+        discovery = NodeDiscovery(
+            prefill_instances=[],
+            decode_instances=["10.0.0.1:8000"],
+            registry=registry,
+            on_model_discovered=callback,
+        )
+        mock_session = MagicMock()
+
+        await discovery._probe_models(mock_session, "10.0.0.1:8000")
+        await discovery._probe_models(mock_session, "10.0.0.1:8000")
+
+        callback.assert_awaited_once_with("known-model")
+        mock_session.get.assert_not_called()
+
 
 class TestRegistryUpdateModel:
     """Tests for registry.update_model()."""
