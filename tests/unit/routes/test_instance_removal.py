@@ -6,7 +6,7 @@ import asyncio
 import itertools
 import threading
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Third Party
 import pytest
@@ -14,6 +14,7 @@ import pytest
 # First Party
 from xpyd.proxy import Proxy
 from xpyd.registry import InstanceRegistry, InstanceStatus
+from xpyd.scheduler.load_balanced import LoadBalancedScheduler
 
 
 def _proxy(registry: InstanceRegistry) -> SimpleNamespace:
@@ -29,6 +30,7 @@ def _proxy(registry: InstanceRegistry) -> SimpleNamespace:
         scheduling_policy=policy,
         _round_robin_policy=policy,
         _round_robin_models=set(),
+        _aggregated_policies={},
         _instance_mutation_lock=asyncio.Lock(),
         health_monitor=MagicMock(),
         discovery=MagicMock(),
@@ -123,3 +125,92 @@ def test_pd_schedule_tracks_registry_active_requests() -> None:
     Proxy.schedule_completion(proxy, prefill_instance=selected, req_len=1)
 
     assert registry.get_active_requests(selected) == 0
+
+
+@pytest.mark.asyncio
+async def test_add_instance_updates_every_runtime_component() -> None:
+    registry = InstanceRegistry()
+    registry.add("decode", "127.0.0.1:8200", model="test/model")
+    registry.mark_healthy("127.0.0.1:8200")
+    proxy = _proxy(registry)
+
+    with patch.object(
+        Proxy,
+        "_validated_instance_details",
+        AsyncMock(return_value=("test/model", 4096)),
+    ):
+        added = await Proxy.add_instance(proxy, "decode", "127.0.0.1:8202")
+
+    assert added is True
+    info = registry.get_instance_info("127.0.0.1:8202")
+    assert info.model == "test/model"
+    assert info.status == InstanceStatus.HEALTHY
+    assert proxy.decode_instances[-1] == "127.0.0.1:8202"
+    proxy.health_monitor.add_node.assert_called_once_with("127.0.0.1:8202")
+    proxy.discovery.add_instance.assert_called_once_with("decode", "127.0.0.1:8202")
+
+
+@pytest.mark.asyncio
+async def test_add_aggregated_instance_updates_model_pool() -> None:
+    registry = InstanceRegistry()
+    registry.add("aggregated", "127.0.0.1:8000", model="test/model")
+    registry.mark_healthy("127.0.0.1:8000")
+    proxy = _proxy(registry)
+    proxy.aggregated_instances = {"test/model": ["127.0.0.1:8000"]}
+
+    with patch.object(
+        Proxy,
+        "_validated_instance_details",
+        AsyncMock(return_value=("test/model", 4096)),
+    ):
+        added = await Proxy.add_instance(proxy, "aggregated", "localhost:8000")
+
+    assert added is True
+    assert proxy.aggregated_instances["test/model"] == [
+        "127.0.0.1:8000",
+        "localhost:8000",
+    ]
+    assert registry.get_instance_info("localhost:8000").status == InstanceStatus.HEALTHY
+    proxy.discovery.add_instance.assert_called_once_with("aggregated", "localhost:8000")
+
+
+@pytest.mark.asyncio
+async def test_load_balanced_scheduler_can_select_runtime_instance() -> None:
+    registry = InstanceRegistry()
+    registry.add("prefill", "127.0.0.1:8100", model="test/model")
+    registry.add("decode", "127.0.0.1:8200", model="test/model")
+    registry.mark_healthy("127.0.0.1:8100")
+    registry.mark_healthy("127.0.0.1:8200")
+    with patch(
+        "xpyd.scheduler.load_balanced.query_instance_model_len",
+        side_effect=lambda instances: [4096] * len(instances),
+    ):
+        policy = LoadBalancedScheduler(
+            ["127.0.0.1:8100"],
+            ["127.0.0.1:8200"],
+            registry=registry,
+        )
+    proxy = _proxy(registry)
+    proxy.scheduling_policy = policy
+    proxy.prefill_instances = policy.prefill_instances
+    proxy.decode_instances = policy.decode_instances
+    proxy.prefill_cycler = itertools.cycle(proxy.prefill_instances)
+    proxy.decode_cycler = itertools.cycle(proxy.decode_instances)
+    policy.decode_bs_counter[0] = 1
+
+    with patch.object(
+        Proxy,
+        "_validated_instance_details",
+        AsyncMock(return_value=("test/model", 8192)),
+    ):
+        await Proxy.add_instance(proxy, "decode", "127.0.0.1:8202")
+
+    selected = policy.schedule(
+        proxy.decode_cycler,
+        is_prompt=False,
+        request_len=1,
+        max_tokens=1,
+        model="test/model",
+    )
+    assert selected == "127.0.0.1:8202"
+    assert policy.decode_model_len == [4096, 8192]

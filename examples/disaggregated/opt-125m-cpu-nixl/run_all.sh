@@ -211,7 +211,9 @@ assert_inference_status 503
 start_decode
 bash "${SCRIPT_DIR}/smoke_test.sh"
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
-smoke_admin_success decode 127.0.0.1:8100
+smoke_admin_success prefill localhost:8100
+MODEL=facebook/opt-125m \
+    smoke_admin_remove_success prefill 127.0.0.1:8100 200
 MODEL=facebook/opt-125m \
     smoke_admin_remove_draining decode "" 503
 

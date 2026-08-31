@@ -271,7 +271,9 @@ fi
 start_node decode 0
 run_smoke_test
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
-smoke_admin_success decode 127.0.0.1:8100
+smoke_admin_success prefill localhost:8100
+MODEL=facebook/opt-125m \
+    smoke_admin_remove_success prefill 127.0.0.1:8100 200
 REMOVE_INFERENCE_STATUS=200
 if ((DECODE_COUNT == 1)); then
     REMOVE_INFERENCE_STATUS=503

@@ -36,6 +36,18 @@ class _AdminServer:
         self.validate_instance = AsyncMock(return_value=valid)
         self.drain_and_remove_instance = AsyncMock()
 
+        async def _add_instance(role: str, address: str) -> bool:
+            if not valid:
+                return False
+            instances = getattr(self, f"{role}_instances")
+            if address in instances:
+                raise ValueError("Instance already exists")
+            instances.append(address)
+            setattr(self, f"{role}_cycler", itertools.cycle(instances))
+            return True
+
+        self.add_instance = AsyncMock(side_effect=_add_instance)
+
 
 @pytest.fixture(name="admin_key")
 def _admin_key(monkeypatch: pytest.MonkeyPatch) -> str:
@@ -67,7 +79,7 @@ def test_missing_admin_key_env_is_a_server_error(
     response = _add(_client(server), {"type": "prefill", "instance": "127.0.0.1:8100"})
 
     assert response.status_code == 500
-    assert server.validate_instance.await_count == 0
+    assert server.add_instance.await_count == 0
 
 
 def test_wrong_api_key_is_forbidden(admin_key: str) -> None:
@@ -110,7 +122,7 @@ def test_instance_is_added_and_immediately_schedulable(
     assert new_instance in instances
     cycler = getattr(server, f"{role}_cycler")
     assert new_instance in {next(cycler) for _ in range(len(instances))}
-    server.validate_instance.assert_awaited_once_with(new_instance)
+    server.add_instance.assert_awaited_once_with(role, new_instance)
 
 
 @pytest.mark.parametrize("role", ["both", "", None])
@@ -203,7 +215,7 @@ def test_duplicate_instance_is_rejected(admin_key: str) -> None:
 def test_unexpected_failure_is_reported_as_server_error(admin_key: str) -> None:
     """An exception inside the handler yields a structured 500."""
     server = _AdminServer()
-    server.validate_instance = AsyncMock(side_effect=RuntimeError("boom"))
+    server.add_instance = AsyncMock(side_effect=RuntimeError("boom"))
 
     response = _add(_client(server), {"type": "prefill", "instance": "127.0.0.1:8100"})
 

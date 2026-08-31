@@ -284,7 +284,7 @@ smoke_admin_endpoint() {
         )"
         assert_status "/instances/add with an invalid role" 400 "$(
             admin_post "${ADMIN_API_KEY}" \
-                "{\"type\": \"aggregated\", \"instance\": \"127.0.0.1:9100\"}"
+                "{\"type\": \"invalid\", \"instance\": \"127.0.0.1:9100\"}"
         )"
         assert_status "/instances/add with an invalid address" 400 "$(
             admin_post "${ADMIN_API_KEY}" \
@@ -340,7 +340,8 @@ smoke_admin_success() {
     local role=$1 instance=$2 before after result body status
     echo "=== Admin endpoint success path ==="
 
-    before="$(curl --fail --silent --show-error "${PROXY_ENDPOINT}/status")"
+    before="$(curl --fail --silent --show-error \
+        "${PROXY_ENDPOINT}/status/instances")"
     result="$(
         curl --silent --show-error --write-out $'\n%{http_code}' \
             "${PROXY_ENDPOINT}/instances/add" \
@@ -354,7 +355,8 @@ smoke_admin_success() {
         echo "response: ${body}" >&2
         return 1
     fi
-    after="$(curl --fail --silent --show-error "${PROXY_ENDPOINT}/status")"
+    after="$(curl --fail --silent --show-error \
+        "${PROXY_ENDPOINT}/status/instances")"
 
     BEFORE="${before}" AFTER="${after}" ROLE="${role}" INSTANCE="${instance}" \
         BODY="${body}" python - <<'PY'
@@ -366,11 +368,14 @@ after = json.loads(os.environ["AFTER"])
 role = os.environ["ROLE"]
 instance = os.environ["INSTANCE"]
 body = json.loads(os.environ["BODY"])
-nodes_key = f"{role}_nodes"
-count_key = f"{role}_node_count"
-assert instance not in before[nodes_key], before
-assert instance in after[nodes_key], after
-assert after[count_key] == before[count_key] + 1, (before, after)
+pool_key = f"{role}_instances"
+before_addresses = {item["address"] for item in before[pool_key]}
+after_addresses = {item["address"] for item in after[pool_key]}
+assert instance not in before_addresses, before
+assert instance in after_addresses, after
+assert len(after_addresses) == len(before_addresses) + 1, (before, after)
+added = next(item for item in after[pool_key] if item["address"] == instance)
+assert added["status"] == "healthy", added
 assert body == {"message": f"Added {instance} to {role}_instances."}, body
 PY
     echo "  added ${instance} to the ${role} pool"
