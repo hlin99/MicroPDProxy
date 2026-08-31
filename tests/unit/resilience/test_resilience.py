@@ -285,8 +285,7 @@ class TestResilienceConfigYAML:
 
     def test_from_yaml(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text(
-            """\
+        yaml_file.write_text("""\
 model: test-model
 decode:
   - "127.0.0.1:8000"
@@ -295,8 +294,7 @@ retry:
   max_retries: 3
   initial_backoff_ms: 200
   retryable_status_codes: [500, 502]
-"""
-        )
+""")
         args = types.SimpleNamespace(
             config=str(yaml_file),
             model=None,
@@ -319,16 +317,14 @@ retry:
 
     def test_unknown_retry_key_rejected(self, tmp_path):
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text(
-            """\
+        yaml_file.write_text("""\
 model: test-model
 decode:
   - "127.0.0.1:8000"
 retry:
   enabled: true
   bogus_key: 42
-"""
-        )
+""")
         args = types.SimpleNamespace(
             config=str(yaml_file),
             model=None,
