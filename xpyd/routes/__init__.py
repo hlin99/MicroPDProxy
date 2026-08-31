@@ -5,8 +5,8 @@ from fastapi import APIRouter
 
 from .admin import register as register_admin
 from .completions import register as register_completions
-from .health import register as register_health
 from .forward import register as register_proxy
+from .health import register as register_health
 
 
 def register_routes(router: APIRouter, server) -> None:

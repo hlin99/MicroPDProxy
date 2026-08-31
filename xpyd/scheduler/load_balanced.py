@@ -5,8 +5,8 @@ import itertools
 import logging
 from typing import Optional
 
-from xpyd.utils import query_instance_model_len
 from xpyd.scheduler.scheduler_base import SchedulingPolicy
+from xpyd.utils import query_instance_model_len
 
 logger = logging.getLogger("xpyd.proxy")
 
@@ -14,7 +14,9 @@ logger = logging.getLogger("xpyd.proxy")
 class LoadBalancedScheduler(SchedulingPolicy):
     """Select the least-loaded instance, respecting model-length limits."""
 
-    def __init__(self, prefill_instances: list[str], decode_instances: list[str], registry=None):
+    def __init__(
+        self, prefill_instances: list[str], decode_instances: list[str], registry=None
+    ):
         self.prefill_utils_counter = [0] * len(prefill_instances)
         self.prefill_bs_counter = [0] * len(prefill_instances)
         self.decode_kv_utils_counter = [0] * len(decode_instances)
@@ -23,7 +25,8 @@ class LoadBalancedScheduler(SchedulingPolicy):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         logger.info(
-            "LoadBalancedScheduler, prefill/decode instance counts: prefill=%d, decode=%d",
+            "LoadBalancedScheduler, prefill/decode instance counts: "
+            "prefill=%d, decode=%d",
             len(self.prefill_bs_counter),
             len(self.decode_bs_counter),
         )
@@ -65,7 +68,9 @@ class LoadBalancedScheduler(SchedulingPolicy):
     def _schedule_prefill(self, request_len, max_tokens, model=""):
         available = None
         if self._registry is not None:
-            available = set(self._registry.get_available_instances("prefill", model=model))
+            available = set(
+                self._registry.get_available_instances("prefill", model=model)
+            )
         candidates = [
             i
             for i, max_len in enumerate(self.prefill_model_len)
@@ -100,7 +105,9 @@ class LoadBalancedScheduler(SchedulingPolicy):
     def _schedule_decode(self, request_len, max_tokens, model=""):
         available = None
         if self._registry is not None:
-            available = set(self._registry.get_available_instances("decode", model=model))
+            available = set(
+                self._registry.get_available_instances("decode", model=model)
+            )
         candidates = [
             i
             for i, max_len in enumerate(self.decode_model_len)
@@ -116,16 +123,12 @@ class LoadBalancedScheduler(SchedulingPolicy):
 
         min_value = min(self.decode_bs_counter[i] for i in candidates)
         if min_value == 0:
-            min_index = next(
-                i for i in candidates if self.decode_bs_counter[i] == 0
-            )
+            min_index = next(i for i in candidates if self.decode_bs_counter[i] == 0)
         else:
             min_indices = [
                 i for i in candidates if self.decode_bs_counter[i] == min_value
             ]
-            min_index = min(
-                min_indices, key=lambda i: self.decode_kv_utils_counter[i]
-            )
+            min_index = min(min_indices, key=lambda i: self.decode_kv_utils_counter[i])
 
         self.decode_bs_counter[min_index] += 1
         self.decode_kv_utils_counter[min_index] += request_len

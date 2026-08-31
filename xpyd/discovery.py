@@ -40,9 +40,7 @@ class NodeDiscovery:
         heartbeat_interval: float = 30.0,
         registry: Optional["InstanceRegistry"] = None,
         aggregated_instances: Optional[List[str]] = None,
-        on_model_discovered: Optional[
-            Callable[[str], Awaitable[None] | None]
-        ] = None,
+        on_model_discovered: Optional[Callable[[str], Awaitable[None] | None]] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -68,10 +66,7 @@ class NodeDiscovery:
         has_disaggregated = (
             bool(self.decode_instances)
             and len(self.healthy_decode) >= 1
-            and (
-                not self.prefill_instances
-                or len(self.healthy_prefill) >= 1
-            )
+            and (not self.prefill_instances or len(self.healthy_prefill) >= 1)
         )
         has_aggregated = len(self.healthy_aggregated) >= 1
         return has_disaggregated or has_aggregated
@@ -104,9 +99,7 @@ class NodeDiscovery:
     async def wait_until_ready(self) -> bool:
         """Block until ready or timeout. Returns True if ready."""
         try:
-            await asyncio.wait_for(
-                self._ready.wait(), timeout=self.wait_timeout
-            )
+            await asyncio.wait_for(self._ready.wait(), timeout=self.wait_timeout)
             return True
         except asyncio.TimeoutError:
             return False
@@ -124,7 +117,8 @@ class NodeDiscovery:
                 if self.is_ready and not self._ready.is_set():
                     self._ready.set()
                     logger.info(
-                        "Proxy ready: %d prefill, %d decode, %d aggregated nodes available",
+                        "Proxy ready: %d prefill, %d decode, "
+                        "%d aggregated nodes available",
                         len(self.healthy_prefill),
                         len(self.healthy_decode),
                         len(self.healthy_aggregated),
@@ -154,9 +148,7 @@ class NodeDiscovery:
         ):
             return
         self._last_heartbeat = now
-        has_disaggregated = bool(
-            self.prefill_instances or self.decode_instances
-        )
+        has_disaggregated = bool(self.prefill_instances or self.decode_instances)
         has_aggregated = bool(self.aggregated_instances)
         fields = []
         if has_disaggregated:
@@ -181,16 +173,12 @@ class NodeDiscovery:
         mode = (
             "mixed"
             if has_disaggregated and has_aggregated
-            else "disaggregated"
-            if has_disaggregated
-            else "aggregated"
+            else "disaggregated" if has_disaggregated else "aggregated"
         )
         logger.info("Node heartbeat | mode=%s | %s", mode, " | ".join(fields))
 
     @staticmethod
-    def _role_heartbeat(
-        role: str, configured: List[str], online: Set[str]
-    ) -> str:
+    def _role_heartbeat(role: str, configured: List[str], online: Set[str]) -> str:
         return f"{role}={len(online)}/{len(configured)} online"
 
     async def _probe_all(self, session: aiohttp.ClientSession):
@@ -207,7 +195,8 @@ class NodeDiscovery:
     async def _probe_node(
         self, session: aiohttp.ClientSession, instance: str, role: str
     ):
-        """Probe a single node's /health endpoint and /v1/models for model auto-detection."""
+        """Probe a single node's /health endpoint and /v1/models for model
+        auto-detection."""
         url = f"http://{instance}/health"
         if role == "prefill":
             healthy_set = self.healthy_prefill
@@ -237,9 +226,7 @@ class NodeDiscovery:
         except Exception:
             healthy_set.discard(instance)
 
-    async def _probe_models(
-        self, session: aiohttp.ClientSession, instance: str
-    ):
+    async def _probe_models(self, session: aiohttp.ClientSession, instance: str):
         """Probe /v1/models on a healthy instance to auto-detect model name.
 
         Only probes when the registry model for this instance is unknown
@@ -280,12 +267,12 @@ class NodeDiscovery:
                         )
                 else:
                     logger.debug(
-                        "/v1/models returned %d on %s", resp.status, instance,
+                        "/v1/models returned %d on %s",
+                        resp.status,
+                        instance,
                     )
         except Exception:
-            logger.debug(
-                "Failed to probe /v1/models on %s", instance
-            )
+            logger.debug("Failed to probe /v1/models on %s", instance)
             return
         if detected_model:
             await self._notify_model_discovered(detected_model)

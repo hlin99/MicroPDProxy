@@ -92,10 +92,10 @@ Minimal example (derived from `examples/proxy-simple.yaml`):
 model: /path/to/model
 port: 8868
 prefill:
-  - "PREFILL_HOST:8100"
+  - "127.0.0.1:8100"
 decode:
-  - "DECODE_HOST_1:8200"
-  - "DECODE_HOST_2:8200"
+  - "127.0.0.2:8200"
+  - "127.0.0.3:8200"
 scheduling: loadbalanced
 ```
 

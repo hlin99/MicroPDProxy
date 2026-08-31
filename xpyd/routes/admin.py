@@ -7,9 +7,9 @@ import logging
 import os
 
 from fastapi import APIRouter, Header, Request
+from fastapi.responses import JSONResponse
 
 from xpyd.errors import INVALID_REQUEST, SERVER_ERROR, error_response
-from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("xpyd.proxy")
 
@@ -22,14 +22,10 @@ def register(router: APIRouter, server) -> None:
         expected_api_key = os.environ.get("ADMIN_API_KEY")
         if not expected_api_key:
             logger.error("ADMIN_API_KEY is not set in the environment.")
-            return error_response(
-                "Server configuration error", SERVER_ERROR, 500
-            )
+            return error_response("Server configuration error", SERVER_ERROR, 500)
         if x_api_key != expected_api_key:
             logger.warning("Unauthorized access attempt on admin endpoint")
-            return error_response(
-                "Forbidden: Invalid API Key", INVALID_REQUEST, 403
-            )
+            return error_response("Forbidden: Invalid API Key", INVALID_REQUEST, 403)
         return None
 
     async def get_status():
@@ -42,7 +38,7 @@ def register(router: APIRouter, server) -> None:
 
     async def add_instance_endpoint(
         request: Request,
-        x_api_key: str = Header(...),
+        x_api_key: str = Header(...),  # noqa: B008 - FastAPI dependency idiom
     ):
         auth_error = _authenticate_api_key(x_api_key)
         if auth_error:
@@ -67,29 +63,38 @@ def register(router: APIRouter, server) -> None:
             except Exception:
                 return error_response("Invalid instance address", INVALID_REQUEST, 400)
 
-            # validate_instance lives on the Proxy class (MicroDisaggregatedProxyServer.py)
+            # validate_instance lives on the Proxy class
+            # (MicroDisaggregatedProxyServer.py)
             is_valid = await server.validate_instance(instance)
             if not is_valid:
-                return error_response("Instance validation failed", INVALID_REQUEST, 400)
+                return error_response(
+                    "Instance validation failed", INVALID_REQUEST, 400
+                )
 
             if instance_type == "prefill":
                 with server.scheduling_policy.lock:
                     if instance not in server.prefill_instances:
                         server.prefill_instances.append(instance)
-                        server.prefill_cycler = itertools.cycle(server.prefill_instances)
+                        server.prefill_cycler = itertools.cycle(
+                            server.prefill_instances
+                        )
                     else:
-                        return error_response("Instance already exists", INVALID_REQUEST, 400)
+                        return error_response(
+                            "Instance already exists", INVALID_REQUEST, 400
+                        )
             else:
                 with server.scheduling_policy.lock:
                     if instance not in server.decode_instances:
                         server.decode_instances.append(instance)
                         server.decode_cycler = itertools.cycle(server.decode_instances)
                     else:
-                        return error_response("Instance already exists", INVALID_REQUEST, 400)
+                        return error_response(
+                            "Instance already exists", INVALID_REQUEST, 400
+                        )
 
-            return JSONResponse(content={
-                "message": f"Added {instance} to {instance_type}_instances."
-            })
+            return JSONResponse(
+                content={"message": f"Added {instance} to {instance_type}_instances."}
+            )
         except Exception as e:
             logger.error("Error in add_instance_endpoint: %s", str(e))
             return error_response(f"Internal error: {e}", SERVER_ERROR, 500)

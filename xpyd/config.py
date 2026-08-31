@@ -120,15 +120,11 @@ class InstanceEntry(BaseModel):
             try:
                 ipaddress.ip_address(host)
             except ValueError as exc:
-                raise ValueError(
-                    f"Invalid host in instance {v}: {exc}"
-                ) from exc
+                raise ValueError(f"Invalid host in instance {v}: {exc}") from exc
         try:
             port = int(port_str)
         except ValueError as exc:
-            raise ValueError(
-                f"Invalid port in instance {v}: {exc}"
-            ) from exc
+            raise ValueError(f"Invalid port in instance {v}: {exc}") from exc
         if not (1 <= port <= 65535):
             raise ValueError(f"Port out of range in instance {v}")
         return v
@@ -171,8 +167,7 @@ class ProxyConfig(BaseModel):
             missing = set(self.decode) - set(self.zmq.receivers)
             if missing:
                 raise ValueError(
-                    "zmq.receivers is missing decode instances: "
-                    f"{sorted(missing)}"
+                    "zmq.receivers is missing decode instances: " f"{sorted(missing)}"
                 )
             if self.first_token_source == "prefill":
                 incompatible = [
@@ -206,9 +201,7 @@ class ProxyConfig(BaseModel):
     def _valid_log_level(cls, v: str) -> str:
         valid = {"debug", "info", "warning", "error"}
         if v not in valid:
-            raise ValueError(
-                f"log_level must be one of {sorted(valid)}, got {v!r}"
-            )
+            raise ValueError(f"log_level must be one of {sorted(valid)}, got {v!r}")
         return v
 
     @field_validator("prefill", "decode", mode="before")
@@ -230,19 +223,13 @@ class ProxyConfig(BaseModel):
                 try:
                     ipaddress.ip_address(host)
                 except ValueError as exc:
-                    raise ValueError(
-                        f"Invalid host in instance {inst}: {exc}"
-                    ) from exc
+                    raise ValueError(f"Invalid host in instance {inst}: {exc}") from exc
             try:
                 port = int(port_str)
             except ValueError as exc:
-                raise ValueError(
-                    f"Invalid port in instance {inst}: {exc}"
-                ) from exc
+                raise ValueError(f"Invalid port in instance {inst}: {exc}") from exc
             if not (1 <= port <= 65535):
-                raise ValueError(
-                    f"Port out of range in instance {inst}"
-                )
+                raise ValueError(f"Port out of range in instance {inst}")
         return instances
 
     @model_validator(mode="after")
@@ -260,9 +247,7 @@ class ProxyConfig(BaseModel):
                 self._validate_instance_roles(self.instances)
             return self
         if not self.decode:
-            raise ValueError(
-                "Please specify at least one decode node."
-            )
+            raise ValueError("Please specify at least one decode node.")
         if not self.model:
             raise ValueError(
                 "Please specify a model name (required in single-model mode)."
@@ -271,8 +256,10 @@ class ProxyConfig(BaseModel):
 
     @staticmethod
     def _validate_instance_roles(instances: List[InstanceEntry]) -> None:
-        """Validate that each model has either (prefill/decode) or (aggregated), not mixed."""
+        """Validate that each model has either (prefill/decode) or (aggregated),
+        not mixed."""
         from collections import defaultdict
+
         model_roles: Dict[str, set] = defaultdict(set)
         for e in instances:
             model_roles[e.model].add(e.role)
@@ -298,13 +285,15 @@ class ProxyConfig(BaseModel):
         """Expand the 'models' shorthand into the 'instances' list."""
         if self.models is not None:
             if self.instances is not None:
-                raise ValueError(
-                    "Cannot specify both 'models' and 'instances'."
-                )
+                raise ValueError("Cannot specify both 'models' and 'instances'.")
             expanded: List[InstanceEntry] = []
             model_schedulers: Dict[str, str] = {}
             _known_model_keys = {
-                "name", "prefill", "decode", "aggregated", "scheduler",
+                "name",
+                "prefill",
+                "decode",
+                "aggregated",
+                "scheduler",
             }
             for entry in self.models:
                 name = entry.get("name", "")
@@ -315,28 +304,41 @@ class ProxyConfig(BaseModel):
                 unknown_keys = set(entry.keys()) - _known_model_keys
                 if unknown_keys:
                     raise ValueError(
-                        f"Unknown keys in model {name!r}: "
-                        f"{sorted(unknown_keys)}"
+                        f"Unknown keys in model {name!r}: " f"{sorted(unknown_keys)}"
                     )
                 has_aggregated = bool(entry.get("aggregated"))
-                has_disaggregated = bool(entry.get("prefill")) or bool(entry.get("decode"))
+                has_disaggregated = bool(entry.get("prefill")) or bool(
+                    entry.get("decode")
+                )
                 if has_aggregated and has_disaggregated:
                     raise ValueError(
                         f"Model {name!r} cannot have both 'aggregated' and "
                         f"'prefill'/'decode' fields."
                     )
                 for addr in entry.get("prefill", []):
-                    expanded.append(InstanceEntry(
-                        address=addr, role="prefill", model=name,
-                    ))
+                    expanded.append(
+                        InstanceEntry(
+                            address=addr,
+                            role="prefill",
+                            model=name,
+                        )
+                    )
                 for addr in entry.get("decode", []):
-                    expanded.append(InstanceEntry(
-                        address=addr, role="decode", model=name,
-                    ))
+                    expanded.append(
+                        InstanceEntry(
+                            address=addr,
+                            role="decode",
+                            model=name,
+                        )
+                    )
                 for addr in entry.get("aggregated", []):
-                    expanded.append(InstanceEntry(
-                        address=addr, role="aggregated", model=name,
-                    ))
+                    expanded.append(
+                        InstanceEntry(
+                            address=addr,
+                            role="aggregated",
+                            model=name,
+                        )
+                    )
                 if "scheduler" in entry:
                     model_schedulers[name] = entry["scheduler"]
             self.instances = expanded
@@ -490,8 +492,7 @@ class ProxyConfig(BaseModel):
         if retry_raw is not None:
             if not isinstance(retry_raw, dict):
                 raise ValueError(
-                    f"'retry' must be a mapping, "
-                    f"got {type(retry_raw).__name__}"
+                    f"'retry' must be a mapping, " f"got {type(retry_raw).__name__}"
                 )
 
         # 2. Pop YAML-only keys that don't map directly to ProxyConfig fields
@@ -502,7 +503,9 @@ class ProxyConfig(BaseModel):
 
         # 2b. Pop strategy-specific config sections
         _STRATEGY_NAMES = {
-            "consistent_hash", "power_of_two", "cache_aware",
+            "consistent_hash",
+            "power_of_two",
+            "cache_aware",
         }
         scheduling_config: Dict[str, Any] = {}
         for strategy_name in _STRATEGY_NAMES:
@@ -517,15 +520,17 @@ class ProxyConfig(BaseModel):
 
         # 3. Reject unknown YAML keys early
         known_fields = set(_arg_defaults.keys()) | {
-            "health_check", "instances", "models",
-            "scheduling", "scheduling_config",
-            "circuit_breaker", "retry",
+            "health_check",
+            "instances",
+            "models",
+            "scheduling",
+            "scheduling_config",
+            "circuit_breaker",
+            "retry",
         }
         unknown = set(yaml_data.keys()) - known_fields
         if unknown:
-            raise ValueError(
-                f"Unknown keys in YAML config: {sorted(unknown)}"
-            )
+            raise ValueError(f"Unknown keys in YAML config: {sorted(unknown)}")
 
         # 4. Build merged dict: YAML first, then CLI overrides.
         #    NOTE: argparse cannot distinguish "user explicitly passed the
@@ -542,8 +547,11 @@ class ProxyConfig(BaseModel):
 
         # 5. scheduling → roundrobin mapping + new policy support
         _VALID_SCHEDULING = {
-            "roundrobin", "loadbalanced",
-            "consistent_hash", "power_of_two", "cache_aware",
+            "roundrobin",
+            "loadbalanced",
+            "consistent_hash",
+            "power_of_two",
+            "cache_aware",
         }
         if scheduling is not None:
             if scheduling not in _VALID_SCHEDULING:
@@ -582,9 +590,7 @@ class ProxyConfig(BaseModel):
 
         # 7. Circuit breaker config (YAML only, no CLI override)
         if circuit_breaker_yaml is not None:
-            merged["circuit_breaker"] = CircuitBreakerConfig(
-                **circuit_breaker_yaml
-            )
+            merged["circuit_breaker"] = CircuitBreakerConfig(**circuit_breaker_yaml)
 
         # 8. Retry config (YAML only, no CLI override)
         if retry_raw is not None:
@@ -647,8 +653,7 @@ class ProxyConfig(BaseModel):
         if retry_raw is not None:
             if not isinstance(retry_raw, dict):
                 raise ValueError(
-                    f"'retry' must be a mapping, "
-                    f"got {type(retry_raw).__name__}"
+                    f"'retry' must be a mapping, " f"got {type(retry_raw).__name__}"
                 )
             yaml_data["retry"] = ResilienceConfig(**retry_raw)
 
@@ -660,18 +665,21 @@ class ProxyConfig(BaseModel):
                     f"'circuit_breaker' must be a mapping, "
                     f"got {type(circuit_breaker_raw).__name__}"
                 )
-            yaml_data["circuit_breaker"] = CircuitBreakerConfig(
-                **circuit_breaker_raw
-            )
+            yaml_data["circuit_breaker"] = CircuitBreakerConfig(**circuit_breaker_raw)
 
         # Handle scheduling and strategy-specific config sections
         _VALID_SCHEDULING = {
-            "roundrobin", "loadbalanced",
-            "consistent_hash", "power_of_two", "cache_aware",
+            "roundrobin",
+            "loadbalanced",
+            "consistent_hash",
+            "power_of_two",
+            "cache_aware",
         }
         scheduling = yaml_data.pop("scheduling", None)
         _STRATEGY_NAMES = {
-            "consistent_hash", "power_of_two", "cache_aware",
+            "consistent_hash",
+            "power_of_two",
+            "cache_aware",
         }
         scheduling_config: Dict[str, Any] = {}
         for strategy_name in _STRATEGY_NAMES:

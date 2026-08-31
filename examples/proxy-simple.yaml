@@ -1,18 +1,19 @@
 # MicroDisaggregatedProxy — Minimal flat-list config (backward compatible)
 #
 # If you don't need topology expansion, you can list instance addresses
-# directly. PREFILL_HOST and DECODE_HOST are non-sensitive placeholders;
-# prefill entries are prefill backend hosts, decode entries are decode backend
-# hosts, and `port` is the proxy listen port.
+# directly. Loopback placeholders are used below so that this file passes
+# `xpyd --validate-config` as-is; replace them with real backend hosts. Prefill
+# entries are prefill backend hosts, decode entries are decode backend hosts,
+# and `port` is the proxy listen port.
 
 model: /path/to/model
 port: 8868
 
 prefill:
-  - "PREFILL_HOST:8100"
+  - "127.0.0.1:8100"
 
 decode:
-  - "DECODE_HOST_1:8200"
-  - "DECODE_HOST_2:8200"
+  - "127.0.0.2:8200"
+  - "127.0.0.3:8200"
 
 scheduling: loadbalanced

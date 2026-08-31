@@ -37,7 +37,8 @@ port: 8000
 # Log level: debug | info | warning | error (default: warning)
 log_level: "warning"
 
-# Scheduling policy: loadbalanced | roundrobin | consistent_hash | power_of_two | cache_aware
+# Scheduling policy:
+#   loadbalanced | roundrobin | consistent_hash | power_of_two | cache_aware
 scheduling: "loadbalanced"
 
 # Startup probe settings
@@ -135,11 +136,7 @@ def _prompt(
     """Prompt until a non-empty value matching *choices* is provided."""
     if choices:
         label = f"{label} ({'/'.join(choices)})"
-    suffix = (
-        f" [{_format_default(default)}]"
-        if default is not None
-        else ""
-    )
+    suffix = f" [{_format_default(default)}]" if default is not None else ""
     while True:
         value = input(f"{label}{suffix}: ").strip()
         value = value or default or ""
@@ -210,9 +207,7 @@ def _expand_address_input(
                 raise ValueError(
                     f"Address {token!r} must include a port in per-instance mode."
                 )
-            addresses.append(
-                token if ":" in token else f"{token}:{default_port}"
-            )
+            addresses.append(token if ":" in token else f"{token}:{default_port}")
             continue
 
         values = match.groupdict()
@@ -269,9 +264,7 @@ def _expand_address_input(
                     f"IP and port ranges in {token!r} must have equal lengths."
                 )
 
-        addresses.extend(
-            f"{address}:{port}" for address, port in zip(ips, ports)
-        )
+        addresses.extend(f"{address}:{port}" for address, port in zip(ips, ports))
 
     if len(addresses) > 1000:
         raise ValueError("Address input expands to more than 1000 instances.")
@@ -324,14 +317,10 @@ def _prompt_role_instances(
     default = None
     if count <= 10:
         if port_mode == "same":
-            default = ",".join(
-                f"127.0.0.{offset + 1}"
-                for offset in range(count)
-            )
+            default = ",".join(f"127.0.0.{offset + 1}" for offset in range(count))
         else:
             default = ",".join(
-                f"127.0.0.1:{default_port + offset}"
-                for offset in range(count)
+                f"127.0.0.1:{default_port + offset}" for offset in range(count)
             )
 
     while True:
@@ -347,7 +336,8 @@ def _prompt_role_instances(
             )
             if port_mode == "same":
                 unexpected_ports = [
-                    address for address in addresses
+                    address
+                    for address in addresses
                     if int(address.rsplit(":", 1)[1]) != default_port
                 ]
                 if unexpected_ports:
@@ -366,8 +356,7 @@ def _prompt_role_instances(
             )
             continue
         return [
-            {"address": address, "role": role, "model": model}
-            for address in addresses
+            {"address": address, "role": role, "model": model} for address in addresses
         ]
 
 
@@ -404,9 +393,7 @@ def _prompt_port_block(
             continue
         ports = set(range(start, end + 1))
         if occupied and ports & occupied:
-            print(
-                f"{label} overlaps another configured ZMQ port range."
-            )
+            print(f"{label} overlaps another configured ZMQ port range.")
             continue
         return start
 
@@ -470,9 +457,7 @@ def _prompt_zmq_config(
 def _prompt_bool(label: str, *, default: bool) -> bool:
     """Prompt for a yes/no value."""
     default_text = (
-        f"{_format_default('Y')}/n"
-        if default
-        else f"y/{_format_default('N')}"
+        f"{_format_default('Y')}/n" if default else f"y/{_format_default('N')}"
     )
     while True:
         value = input(f"{label} [{default_text}]: ").strip().lower()

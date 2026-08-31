@@ -47,7 +47,7 @@ def compute_backoff(
         delay = min(initial_ms * multiplier^attempt, max_ms)
         actual = delay * (1 + random(-jitter_factor, +jitter_factor))
     """
-    delay = min(initial_ms * (multiplier ** attempt), max_ms)
+    delay = min(initial_ms * (multiplier**attempt), max_ms)
     jitter = random.uniform(-jitter_factor, jitter_factor)  # noqa: S311
     return delay * (1.0 + jitter)
 
@@ -111,9 +111,7 @@ class ResilienceHandler:
                 instance = next_instance
                 next_instance = None
             else:
-                instance = select_instance_fn(
-                    excluded=tried if tried else None
-                )
+                instance = select_instance_fn(excluded=tried if tried else None)
             tried.append(instance)
 
             response = await request_fn(instance)

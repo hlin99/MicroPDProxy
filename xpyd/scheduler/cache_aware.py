@@ -44,9 +44,7 @@ class ConsistentHashRing:
 
     @staticmethod
     def _hash(key: str) -> int:
-        return int(
-            hashlib.sha256(key.encode()).hexdigest(), 16
-        )
+        return int(hashlib.sha256(key.encode()).hexdigest(), 16)
 
     def add_worker(self, addr: str) -> None:
         if addr in self._workers:
@@ -133,7 +131,7 @@ class CacheAwarePolicy(SchedulingPolicy):
         self._prefix_length = prefix_length
         self._tokenizer = tokenizer
         self._ring = ConsistentHashRing(vnodes=VIRTUAL_NODES_PER_WORKER)
-        for addr in (workers or []):
+        for addr in workers or []:
             self._ring.add_worker(addr)
 
     # ------------------------------------------------------------------
@@ -155,9 +153,7 @@ class CacheAwarePolicy(SchedulingPolicy):
         prefix_tokens = tokens[: self._prefix_length]
         # Use a stable string representation for hashing
         prefix_str = " ".join(str(t) for t in prefix_tokens)
-        return int(
-            hashlib.sha256(prefix_str.encode()).hexdigest(), 16
-        )
+        return int(hashlib.sha256(prefix_str.encode()).hexdigest(), 16)
 
     # ------------------------------------------------------------------
     # Public API

@@ -24,14 +24,14 @@ from typing import Any, Callable, Optional, cast
 
 import aiohttp
 import uvicorn
-from fastapi import (APIRouter, FastAPI, HTTPException,
-                     Request)
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from transformers import AutoTokenizer
-from fastapi.middleware.cors import CORSMiddleware
+
 from xpyd.config import ProxyConfig
-from xpyd.errors import INVALID_REQUEST, PROXY_ERROR, SERVER_ERROR, error_response
 from xpyd.discovery import NodeDiscovery
+from xpyd.errors import INVALID_REQUEST, PROXY_ERROR, SERVER_ERROR, error_response
 from xpyd.health_monitor import HealthMonitor
 from xpyd.registry import InstanceRegistry
 from xpyd.routes import register_routes
@@ -45,6 +45,7 @@ from xpyd.scheduler import (
     default_registry,
 )
 
+
 class _ExtraFormatter(logging.Formatter):
     """Formatter that appends ``extra`` fields as ``key=value`` pairs."""
 
@@ -56,11 +57,7 @@ class _ExtraFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         base = super().format(record)
-        extras = {
-            k: v
-            for k, v in record.__dict__.items()
-            if k not in self._SKIP
-        }
+        extras = {k: v for k, v in record.__dict__.items() if k not in self._SKIP}
         if extras:
             base += " | " + " ".join(f"{k}={v}" for k, v in extras.items())
         return base
@@ -82,17 +79,19 @@ if not logger.handlers:
 logger.propagate = False
 
 
-AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(total=None,
-                                        connect=None,
-                                        sock_read=None,
-                                        sock_connect=None)
+AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
+    total=None, connect=None, sock_read=None, sock_connect=None
+)
 
-async def P_first_token_generator(generator_p: AsyncGenerator[bytes, None],
-                                  generator_d: AsyncGenerator[bytes, None],
-                                  callback_owner: Optional["Proxy"] = None,
-                                  prefill_instance: Optional[str] = None,
-                                  decode_instance: Optional[str] = None,
-                                  req_len: Optional[int] = None) -> AsyncGenerator[bytes, None]:
+
+async def P_first_token_generator(
+    generator_p: AsyncGenerator[bytes, None],
+    generator_d: AsyncGenerator[bytes, None],
+    callback_owner: Optional["Proxy"] = None,
+    prefill_instance: Optional[str] = None,
+    decode_instance: Optional[str] = None,
+    req_len: Optional[int] = None,
+) -> AsyncGenerator[bytes, None]:
     first_decode = True
 
     try:
@@ -101,9 +100,7 @@ async def P_first_token_generator(generator_p: AsyncGenerator[bytes, None],
     finally:
         if callback_owner:
             callback_owner.exception_handler(
-                prefill_instance=prefill_instance,
-                decode_instance=None,
-                req_len=req_len
+                prefill_instance=prefill_instance, decode_instance=None, req_len=req_len
             )
 
     try:
@@ -115,26 +112,25 @@ async def P_first_token_generator(generator_p: AsyncGenerator[bytes, None],
     finally:
         if callback_owner:
             callback_owner.exception_handler(
-                prefill_instance=None,
-                decode_instance=decode_instance,
-                req_len=req_len
+                prefill_instance=None, decode_instance=decode_instance, req_len=req_len
             )
 
-async def D_first_token_generator(generator_p: AsyncGenerator[bytes, None],
-                                  generator_d: AsyncGenerator[bytes, None],
-                                  callback_owner: Optional["Proxy"] = None,
-                                  prefill_instance: Optional[str] = None,
-                                  decode_instance: Optional[str] = None,
-                                  req_len: Optional[int] = None) -> AsyncGenerator[bytes, None]:
+
+async def D_first_token_generator(
+    generator_p: AsyncGenerator[bytes, None],
+    generator_d: AsyncGenerator[bytes, None],
+    callback_owner: Optional["Proxy"] = None,
+    prefill_instance: Optional[str] = None,
+    decode_instance: Optional[str] = None,
+    req_len: Optional[int] = None,
+) -> AsyncGenerator[bytes, None]:
     try:
         async for _ in generator_p:
             continue
     finally:
         if callback_owner:
             callback_owner.exception_handler(
-                prefill_instance=prefill_instance,
-                decode_instance=None,
-                req_len=req_len
+                prefill_instance=prefill_instance, decode_instance=None, req_len=req_len
             )
 
     try:
@@ -143,29 +139,32 @@ async def D_first_token_generator(generator_p: AsyncGenerator[bytes, None],
     finally:
         if callback_owner:
             callback_owner.exception_handler(
-                prefill_instance=None,
-                decode_instance=decode_instance,
-                req_len=req_len
+                prefill_instance=None, decode_instance=decode_instance, req_len=req_len
             )
+
 
 class Proxy:
 
-    def __init__(self,
-                 prefill_instances: list[str],
-                 decode_instances: list[str],
-                 model: str,
-                 scheduling_policy: SchedulingPolicy,
-                 custom_create_completion: Optional[Callable[
-                     [Request], StreamingResponse]] = None,
-                 custom_create_chat_completion: Optional[Callable[
-                     [Request], StreamingResponse]] = None,
-                 first_token_source: str = "decode",
-                 registry: Optional[InstanceRegistry] = None,
-                 aggregated_instances: Optional[dict[str, list[str]]] = None,
-                 model_schedulers: Optional[dict[str, str]] = None,
-                 tokenizer_path: Optional[str] = None,
-                 disaggregated_mode: str = "direct",
-                 zmq_config=None):
+    def __init__(
+        self,
+        prefill_instances: list[str],
+        decode_instances: list[str],
+        model: str,
+        scheduling_policy: SchedulingPolicy,
+        custom_create_completion: Optional[
+            Callable[[Request], StreamingResponse]
+        ] = None,
+        custom_create_chat_completion: Optional[
+            Callable[[Request], StreamingResponse]
+        ] = None,
+        first_token_source: str = "decode",
+        registry: Optional[InstanceRegistry] = None,
+        aggregated_instances: Optional[dict[str, list[str]]] = None,
+        model_schedulers: Optional[dict[str, str]] = None,
+        tokenizer_path: Optional[str] = None,
+        disaggregated_mode: str = "direct",
+        zmq_config=None,
+    ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
         self.prefill_cycler = itertools.cycle(prefill_instances)
@@ -178,9 +177,7 @@ class Proxy:
         self.tokenizer_path = tokenizer_path
         self._tokenizers: dict[str, Any] = {}
         self._round_robin_models: set[str] = set()
-        self._round_robin_policy = RoundRobinSchedulingPolicy(
-            registry=registry
-        )
+        self._round_robin_policy = RoundRobinSchedulingPolicy(registry=registry)
         self.disaggregated_mode = disaggregated_mode
         self.first_token_source = first_token_source
         self.zmq_config = zmq_config
@@ -430,13 +427,13 @@ class Proxy:
         if self.registry is not None:
             self.registry.decrement_active_requests(instance)
 
-    def on_done(self,
-                prefill_instance: Optional[str] = None,
-                decode_instance: Optional[str] = None,
-                req_len: Optional[int] = None) -> None:
-        self.schedule_completion(prefill_instance,
-                                 decode_instance,
-                                 req_len=req_len)
+    def on_done(
+        self,
+        prefill_instance: Optional[str] = None,
+        decode_instance: Optional[str] = None,
+        req_len: Optional[int] = None,
+    ) -> None:
+        self.schedule_completion(prefill_instance, decode_instance, req_len=req_len)
 
     def setup_routes(self) -> None:
         register_routes(self.router, self)
@@ -449,18 +446,22 @@ class Proxy:
         extra_headers: Optional[dict[str, str]] = None,
     ) -> AsyncGenerator[bytes, None]:
         async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
-            headers = {
-                "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
-            }
+            headers = {"Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"}
             if extra_headers:
                 headers.update(extra_headers)
             try:
-                async with session.post(url=url, json=data,
-                                        headers=headers) as response:
-                    if 200 <= response.status < 300 or 400 <= response.status < 500:  # noqa: E501
+                async with session.post(
+                    url=url, json=data, headers=headers
+                ) as response:
+                    if (
+                        200 <= response.status < 300 or 400 <= response.status < 500
+                    ):  # noqa: E501
                         if use_chunked:
-                            async for chunk_bytes in response.content.iter_chunked(  # noqa: E501
-                                    1024):
+                            async for (
+                                chunk_bytes
+                            ) in response.content.iter_chunked(  # noqa: E501
+                                1024
+                            ):
                                 yield chunk_bytes
                         else:
                             content = await response.read()
@@ -471,16 +472,18 @@ class Proxy:
                             error_content = json.loads(error_content)
                         except json.JSONDecodeError:
                             error_content = error_content
-                        logger.error("Request failed with status %s: %s",
-                                     response.status, error_content)
+                        logger.error(
+                            "Request failed with status %s: %s",
+                            response.status,
+                            error_content,
+                        )
                         # HTTPException is intentional: forward_request is
                         # an async generator, so it cannot return a
                         # JSONResponse.  Callers catch HTTPException and
                         # convert it to error_response().
                         raise HTTPException(
                             status_code=response.status,
-                            detail=
-                            f"Request failed with status {response.status}: "
+                            detail=f"Request failed with status {response.status}: "
                             f"{error_content}",
                         )
             except aiohttp.ClientError as e:
@@ -488,8 +491,7 @@ class Proxy:
                 # See comment above re: async generator context.
                 raise HTTPException(
                     status_code=502,
-                    detail=
-                    "Bad Gateway: Error communicating with upstream server.",
+                    detail="Bad Gateway: Error communicating with upstream server.",
                 ) from e
             except Exception as e:
                 logger.exception("Unexpected error in forward_request")
@@ -499,12 +501,14 @@ class Proxy:
                     detail="Internal proxy error",
                 ) from e
 
-    def schedule(self,
-                 cycler: itertools.cycle,
-                 is_prompt: int = None,
-                 request_len: Optional[int] = None,
-                 max_tokens: Optional[int] = None,
-                 **kwargs) -> Optional[str]:
+    def schedule(
+        self,
+        cycler: itertools.cycle,
+        is_prompt: int = None,
+        request_len: Optional[int] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs,
+    ) -> Optional[str]:
         model = kwargs.pop("model", "")
         policy = (
             self._round_robin_policy
@@ -512,25 +516,29 @@ class Proxy:
             else self.scheduling_policy
         )
         return policy.schedule(
-            cycler, is_prompt, request_len, max_tokens, model=model, **kwargs,
+            cycler,
+            is_prompt,
+            request_len,
+            max_tokens,
+            model=model,
+            **kwargs,
         )
 
-    def schedule_completion(self,
-                            prefill_instance: Optional[str] = None,
-                            decode_instance: Optional[str] = None,
-                            req_len: Optional[int] = None) -> None:
+    def schedule_completion(
+        self,
+        prefill_instance: Optional[str] = None,
+        decode_instance: Optional[str] = None,
+        req_len: Optional[int] = None,
+    ) -> None:
         instances = [
-            instance
-            for instance in (prefill_instance, decode_instance)
-            if instance
+            instance for instance in (prefill_instance, decode_instance) if instance
         ]
         if (
             self.registry is not None
             and instances
             and all(
                 Proxy.uses_round_robin_fallback(
-                    self,
-                    self.registry.get_instance_info(instance).model
+                    self, self.registry.get_instance_info(instance).model
                 )
                 for instance in instances
             )
@@ -539,10 +547,12 @@ class Proxy:
         self.scheduling_policy.schedule_completion(
             prefill_instance=prefill_instance,
             decode_instance=decode_instance,
-            req_len=req_len)
+            req_len=req_len,
+        )
 
     def get_total_token_length(self, prompt: Any, model: str = "") -> int:
-        """Compute total token length — delegates to :func:`xpyd.utils.get_total_token_length`."""
+        """Compute total token length — delegates to
+        :func:`xpyd.utils.get_total_token_length`."""
         from xpyd.utils import get_total_token_length as _get_total_token_length
 
         tokenizer = Proxy.get_tokenizer(self, model)
@@ -578,14 +588,8 @@ class Proxy:
                 "chat_template_kwargs",
                 "tools",
             }
-            payload = {
-                key: value
-                for key, value in request.items()
-                if key in allowed
-            }
-            continue_final_message = request.get(
-                "continue_final_message", False
-            )
+            payload = {key: value for key, value in request.items() if key in allowed}
+            continue_final_message = request.get("continue_final_message", False)
             payload["add_generation_prompt"] = request.get(
                 "add_generation_prompt", not continue_final_message
             )
@@ -597,9 +601,10 @@ class Proxy:
 
         url = f"http://{instances[0]}/tokenize"
         try:
-            async with aiohttp.ClientSession(
-                timeout=AIOHTTP_TIMEOUT
-            ) as session, session.post(url, json=payload) as response:
+            async with (
+                aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session,
+                session.post(url, json=payload) as response,
+            ):
                 data = await response.json()
                 if response.status != 200:
                     raise HTTPException(
@@ -622,13 +627,18 @@ class Proxy:
             )
         return tokens
 
-    def exception_handler(self, prefill_instance: Optional[str] = None, decode_instance: Optional[str] = None, req_len: Optional[int] = None) -> None:
+    def exception_handler(
+        self,
+        prefill_instance: Optional[str] = None,
+        decode_instance: Optional[str] = None,
+        req_len: Optional[int] = None,
+    ) -> None:
         if prefill_instance or decode_instance:
             try:
                 self.on_done(
                     prefill_instance=prefill_instance,
                     decode_instance=decode_instance,
-                    req_len=req_len
+                    req_len=req_len,
                 )
                 # Record success with registry for circuit breaker tracking
                 if self.registry is not None:
@@ -640,7 +650,11 @@ class Proxy:
                 logger.error(f"Error releasing instances: {e}")
                 raise
 
-    def _record_failure(self, prefill_instance: Optional[str] = None, decode_instance: Optional[str] = None) -> None:
+    def _record_failure(
+        self,
+        prefill_instance: Optional[str] = None,
+        decode_instance: Optional[str] = None,
+    ) -> None:
         """Record request failure with registry for circuit breaker tracking."""
         if self.registry is not None:
             if prefill_instance:
@@ -648,7 +662,9 @@ class Proxy:
             if decode_instance:
                 self.registry.record_failure(decode_instance)
 
-    async def get_from_instance(self, path: str, is_full_instancelist: int = 0) -> JSONResponse:
+    async def get_from_instance(
+        self, path: str, is_full_instancelist: int = 0
+    ) -> JSONResponse:
         """Fetch data from backend instance(s) via GET."""
         aggregated_instances = [
             instance
@@ -656,9 +672,7 @@ class Proxy:
             for instance in model_instances
         ]
         instances = (
-            self.prefill_instances
-            + self.decode_instances
-            + aggregated_instances
+            self.prefill_instances + self.decode_instances + aggregated_instances
         )
         if not instances:
             return error_response("No instances available", SERVER_ERROR, 500)
@@ -684,12 +698,17 @@ class Proxy:
                             "data": data,
                         }
                 except Exception as e:
-                    results[inst] = {"status": 500, "error": "Failed to connect to instance"}
+                    results[inst] = {
+                        "status": 500,
+                        "error": "Failed to connect to instance",
+                    }
                     logger.warning("Failed to fetch %s from %s: %s", path, inst, e)
 
         return JSONResponse(content=results, status_code=200)
 
-    async def post_to_instance(self, request: Request, path: str, json_template: dict) -> JSONResponse:
+    async def post_to_instance(
+        self, request: Request, path: str, json_template: dict
+    ) -> JSONResponse:
         """Forward a POST request to a backend instance."""
         try:
             body = await request.json()
@@ -700,7 +719,8 @@ class Proxy:
         if missing:
             return error_response(
                 f"Missing required fields: {', '.join(missing)}",
-                INVALID_REQUEST, 400,
+                INVALID_REQUEST,
+                400,
             )
 
         payload = json_template.copy()
@@ -708,8 +728,10 @@ class Proxy:
 
         url = f"http://{self.prefill_instances[0]}{path}"
         try:
-            async with aiohttp.ClientSession() as session, \
-                    session.post(url, json=payload) as resp:
+            async with (
+                aiohttp.ClientSession() as session,
+                session.post(url, json=payload) as resp,
+            ):
                 try:
                     content = await resp.json()
                 except aiohttp.ContentTypeError:
@@ -717,14 +739,15 @@ class Proxy:
                 return JSONResponse(content, status_code=resp.status)
         except Exception:
             logger.exception("Failed to forward request to %s", url)
-            return error_response(f"Failed to forward request to {url}", SERVER_ERROR, 500)
+            return error_response(
+                f"Failed to forward request to {url}", SERVER_ERROR, 500
+            )
 
     async def validate_instance(self, instance: str) -> bool:
         """Validate that an instance is reachable and serves the correct model."""
         url = f"http://{instance}/v1/models"
         try:
-            async with aiohttp.ClientSession(
-                    timeout=AIOHTTP_TIMEOUT) as client:
+            async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as client:
                 logger.info("Verifying %s ...", instance)
                 async with client.get(url) as response:
                     if response.status == 200:
@@ -737,7 +760,9 @@ class Proxy:
                             else:
                                 logger.warning(
                                     "Mismatch model %s : %s != %s",
-                                    instance, model_cur, self.model,
+                                    instance,
+                                    model_cur,
+                                    self.model,
                                 )
                                 return False
                         else:
@@ -750,7 +775,6 @@ class Proxy:
         except Exception as e:
             logger.error(str(e))
             return False
-
 
 
 def _create_scheduling_policy(
@@ -772,7 +796,9 @@ def _create_scheduling_policy(
     # Legacy explicit-class path (used by existing tests and CLI --roundrobin)
     if scheduling_policy_cls is not None:
         return scheduling_policy_cls(
-            prefill, decode, registry=registry,
+            prefill,
+            decode,
+            registry=registry,
         )
 
     strategy = config.scheduling
@@ -781,7 +807,9 @@ def _create_scheduling_policy(
     # Strategies that accept the legacy (prefill, decode) constructor
     if strategy == "loadbalanced":
         return LoadBalancedScheduler(
-            prefill, decode, registry=registry,
+            prefill,
+            decode,
+            registry=registry,
         )
     if strategy == "roundrobin":
         return RoundRobinSchedulingPolicy(registry=registry)
@@ -807,10 +835,8 @@ class ProxyServer:
         self,
         config: ProxyConfig,
         scheduling_policy: Optional[SchedulingPolicy] = None,
-        create_completion: Optional[Callable[[Request],
-                                             StreamingResponse]] = None,
-        create_chat_completion: Optional[Callable[[Request],
-                                                  StreamingResponse]] = None,
+        create_completion: Optional[Callable[[Request], StreamingResponse]] = None,
+        create_chat_completion: Optional[Callable[[Request], StreamingResponse]] = None,
     ):
         self.config = config
         self.port = config.port
@@ -838,7 +864,8 @@ class ProxyServer:
                         logger.warning(
                             "Duplicate prefill address %s (model=%s) — "
                             "only the first registration is kept",
-                            addr, entry.model,
+                            addr,
+                            entry.model,
                         )
                         continue
                     self.registry.add("prefill", addr, model=entry.model)
@@ -848,7 +875,8 @@ class ProxyServer:
                         logger.warning(
                             "Duplicate decode address %s (model=%s) — "
                             "only the first registration is kept",
-                            addr, entry.model,
+                            addr,
+                            entry.model,
                         )
                         continue
                     self.registry.add("decode", addr, model=entry.model)
@@ -858,7 +886,8 @@ class ProxyServer:
                         logger.warning(
                             "Duplicate aggregated address %s (model=%s) — "
                             "only the first registration is kept",
-                            addr, entry.model,
+                            addr,
+                            entry.model,
                         )
                         continue
                     self.registry.add("aggregated", addr, model=entry.model)
@@ -892,7 +921,9 @@ class ProxyServer:
 
         self._all_prefill = all_prefill
         self._all_decode = all_decode
-        self._all_aggregated = [a for addrs in aggregated_instances.values() for a in addrs]
+        self._all_aggregated = [
+            a for addrs in aggregated_instances.values() for a in addrs
+        ]
         _registered = _registered_prefill | _registered_decode | _registered_aggregated
 
         # Create health monitor if enabled
@@ -917,7 +948,7 @@ class ProxyServer:
         # Stores strategy *names* (not instances) — schedule_aggregated()
         # interprets the strategy at scheduling time.
         # Fallback chain: model-level → global → load_balanced (default).
-        model_scheduler_config = getattr(config, '_model_schedulers', {})
+        model_scheduler_config = getattr(config, "_model_schedulers", {})
         # Validate scheduler names at startup; collect invalid ones first
         invalid_models = [
             model_name
@@ -928,14 +959,18 @@ class ProxyServer:
             logger.warning(
                 "Unknown scheduler %r for model %r; available: %s. "
                 "Will fall back to global policy at runtime.",
-                model_scheduler_config[model_name], model_name,
+                model_scheduler_config[model_name],
+                model_name,
                 default_registry.list_policies(),
             )
             del model_scheduler_config[model_name]
 
         global_policy = _create_scheduling_policy(
-            config, scheduling_policy, self.registry,
-            all_prefill=all_prefill, all_decode=all_decode,
+            config,
+            scheduling_policy,
+            self.registry,
+            all_prefill=all_prefill,
+            all_decode=all_decode,
         )
 
         self.proxy_instance = Proxy(
@@ -953,6 +988,7 @@ class ProxyServer:
             disaggregated_mode=config.disaggregated_mode,
             zmq_config=config.zmq,
         )
+
     def run_server(self) -> None:
         discovery = NodeDiscovery(
             prefill_instances=self._all_prefill,
@@ -980,9 +1016,8 @@ class ProxyServer:
         async def _check_readiness(request: Request, call_next):
             # Allow health/status/metrics endpoints through always
             path = request.url.path
-            if (
-                path in ("/health", "/ping", "/status", "/metrics")
-                or path.startswith("/status/")
+            if path in ("/health", "/ping", "/status", "/metrics") or path.startswith(
+                "/status/"
             ):
                 return await call_next(request)
             if not discovery.is_ready:
@@ -1024,21 +1059,25 @@ class ProxyServer:
                 "aggregated_instances": [],
             }
             for info in self.registry.get_all_instances():
-                result[f"{info.role}_instances"].append({
-                    "address": info.address,
-                    "status": info.status.value,
-                    "circuit": info.circuit_breaker_state.value,
-                    "active_requests": info.active_request_count,
-                    "last_check": info.last_health_check,
-                })
+                result[f"{info.role}_instances"].append(
+                    {
+                        "address": info.address,
+                        "status": info.status.value,
+                        "circuit": info.circuit_breaker_state.value,
+                        "active_requests": info.active_request_count,
+                        "last_check": info.last_health_check,
+                    }
+                )
             return JSONResponse(result)
 
         app.include_router(self.proxy_instance.router)
-        config = uvicorn.Config(app,
-                                host="0.0.0.0",
-                                port=self.port,
-                                log_level=self.config.log_level,
-                                loop="uvloop")
+        config = uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=self.port,
+            log_level=self.config.log_level,
+            loop="uvloop",
+        )
         server = uvicorn.Server(config)
         server.run()
 
@@ -1053,7 +1092,10 @@ def _build_parser():
         description="xPyD — lightweight disaggregated proxy server",
     )
     parser.add_argument(
-        "--version", "-V", action="version", version=f"%(prog)s {_VERSION}",
+        "--version",
+        "-V",
+        action="version",
+        version=f"%(prog)s {_VERSION}",
     )
 
     subparsers = parser.add_subparsers(dest="command")
@@ -1064,51 +1106,75 @@ def _build_parser():
         help="Start the proxy server (default command)",
     )
     proxy_parser.add_argument(
-        "--config", "-c", type=str, default=None,
+        "--config",
+        "-c",
+        type=str,
+        default=None,
         help="Path to YAML configuration file",
     )
     proxy_parser.add_argument(
-        "--validate-config", type=str, default=None, metavar="FILE",
+        "--validate-config",
+        type=str,
+        default=None,
+        metavar="FILE",
         help="Validate YAML config and exit (no server start)",
     )
     proxy_parser.add_argument(
-        "--init-config", nargs="?", const="./xpyd.yaml", default=None,
+        "--init-config",
+        nargs="?",
+        const="./xpyd.yaml",
+        default=None,
         metavar="PATH",
         help="Generate xpyd.yaml, optionally through an interactive wizard "
-             "(default path: ./xpyd.yaml)",
+        "(default path: ./xpyd.yaml)",
     )
     proxy_parser.add_argument(
-        "--port", type=int, default=None,
+        "--port",
+        type=int,
+        default=None,
         help="Override the port from config",
     )
     proxy_parser.add_argument(
-        "--log-level", type=str, default=None, dest="log_level",
+        "--log-level",
+        type=str,
+        default=None,
+        dest="log_level",
         help="Override log level: debug|info|warning|error",
     )
     proxy_parser.add_argument(
-        "--disaggregated-mode", choices=("direct", "nixl", "zmq"), default=None,
+        "--disaggregated-mode",
+        choices=("direct", "nixl", "zmq"),
+        default=None,
         help="disaggregated transfer mode (default: config value or direct)",
     )
     proxy_parser.add_argument(
-        "--first-token-source", choices=("prefill", "decode"), default=None,
+        "--first-token-source",
+        choices=("prefill", "decode"),
+        default=None,
         help="Backend that provides the first client-visible token",
     )
 
     # fix-config subcommand
     fix_parser = subparsers.add_parser(
-        "fix-config", help="Auto-fix common config mistakes",
+        "fix-config",
+        help="Auto-fix common config mistakes",
     )
     fix_parser.add_argument(
-        "config_path", type=str,
+        "config_path",
+        type=str,
         help="Path to YAML configuration file to fix",
     )
     fix_parser.add_argument(
-        "--write", action="store_true", default=False,
+        "--write",
+        action="store_true",
+        default=False,
         help="Write fixes back to the file (creates timestamped .bak backup). "
-             "Note: does not preserve YAML comments or formatting.",
+        "Note: does not preserve YAML comments or formatting.",
     )
     fix_parser.add_argument(
-        "--interactive", action="store_true", default=False,
+        "--interactive",
+        action="store_true",
+        default=False,
         help="Interactively acknowledge ambiguous suggestions one by one",
     )
 
@@ -1162,14 +1228,12 @@ def _print_config_summary(config: ProxyConfig) -> None:
         print(f"  topology: {topology}")
         if topology == "disaggregated":
             print(f"  transfer: {config.disaggregated_mode}")
-        models = sorted({
-            instance.model for instance in config.instances if instance.model
-        })
+        models = sorted(
+            {instance.model for instance in config.instances if instance.model}
+        )
         print(f"  models: {', '.join(models) if models else 'auto-detected'}")
         for role in ("aggregated", "prefill", "decode"):
-            count = sum(
-                instance.role == role for instance in config.instances
-            )
+            count = sum(instance.role == role for instance in config.instances)
             if count:
                 print(f"  {role}: {count} instances")
     print(f"  port: {config.port}")
@@ -1185,11 +1249,14 @@ def main() -> None:
 
     if args.command == "fix-config":
         from xpyd.config_fixer import run_fix_config
-        sys.exit(run_fix_config(
-            args.config_path,
-            write=args.write,
-            interactive=args.interactive,
-        ))
+
+        sys.exit(
+            run_fix_config(
+                args.config_path,
+                write=args.write,
+                interactive=args.interactive,
+            )
+        )
     elif args.command == "proxy":
         # --init-config: generate template and exit
         if args.init_config is not None:
@@ -1226,7 +1293,9 @@ def main() -> None:
         if args.log_level is not None:
             config = config.model_copy(update={"log_level": args.log_level})
         if args.disaggregated_mode is not None:
-            config = config.model_copy(update={"disaggregated_mode": args.disaggregated_mode})
+            config = config.model_copy(
+                update={"disaggregated_mode": args.disaggregated_mode}
+            )
         if args.first_token_source is not None:
             config = config.model_copy(
                 update={"first_token_source": args.first_token_source}

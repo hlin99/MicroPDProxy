@@ -67,9 +67,7 @@ class HealthMonitor:
             tasks = [self._probe_node(session, node) for node in self.nodes]
             await asyncio.gather(*tasks)
 
-    async def _probe_node(
-        self, session: aiohttp.ClientSession, addr: str
-    ) -> None:
+    async def _probe_node(self, session: aiohttp.ClientSession, addr: str) -> None:
         """Probe a single node."""
         url = f"http://{addr}/health"
         try:

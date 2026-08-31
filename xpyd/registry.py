@@ -92,7 +92,9 @@ class InstanceRegistry:
             ValueError: If address is already registered.
         """
         if role not in ("prefill", "decode", "aggregated"):
-            raise ValueError(f"Invalid role: {role!r}. Must be 'prefill', 'decode', or 'aggregated'.")
+            raise ValueError(
+                f"Invalid role: {role!r}. Must be 'prefill', 'decode', or 'aggregated'."
+            )
         with self._lock:
             if address in self._instances:
                 raise ValueError(f"Instance {address!r} is already registered.")
@@ -185,11 +187,7 @@ class InstanceRegistry:
             Sorted list of unique non-empty model names.
         """
         with self._lock:
-            models = {
-                inst.model
-                for inst in self._instances.values()
-                if inst.model
-            }
+            models = {inst.model for inst in self._instances.values() if inst.model}
             return sorted(models)
 
     def update_model(self, address: str, model: str) -> None:

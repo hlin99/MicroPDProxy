@@ -14,10 +14,30 @@ pip install -e ".[dev]"
 pytest tests/unit/ -q
 ```
 
+Collect coverage the same way CI does:
+
+```bash
+pytest tests/unit/ -q --cov=xpyd --cov-report=term-missing
+```
+
+## Example Configurations
+
+Every proxy config under `examples/` (plus the top-level `xpyd.yaml`) is
+validated in CI. Run the same check locally after editing or adding one:
+
+```bash
+bash tests/validate_example_configs.sh
+```
+
+Example configs must pass `xpyd --validate-config` as committed, so use
+loopback placeholder addresses rather than symbolic host names.
+
 ## Code Style
 
 - Python 3.10+
 - Ruff: `ruff check .`
+- Black: `black xpyd`
+- isort: `isort .`
 - Pre-commit: `pre-commit run --all-files`
 - All PRs must pass CI (pre-commit + lint + tests + security scans + integration
   trigger)
