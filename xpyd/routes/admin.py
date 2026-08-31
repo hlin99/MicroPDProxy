@@ -46,14 +46,18 @@ def register(router: APIRouter, server) -> None:
 
         try:
             data = await request.json()
-            logger.warning(str(data))
+            logger.debug("Add instance request: %s", data)
             instance_type = data.get("type")
             instance = data.get("instance")
             if instance_type not in ["prefill", "decode"]:
                 return error_response("Invalid instance type", INVALID_REQUEST, 400)
             if not instance or ":" not in instance:
                 return error_response("Invalid instance format", INVALID_REQUEST, 400)
-            host, port_str = instance.split(":")
+            parts = instance.split(":")
+            if len(parts) != 2:
+                # Matches ProxyConfig address validation: IPv4/hostname only.
+                return error_response("Invalid instance format", INVALID_REQUEST, 400)
+            host, port_str = parts
             try:
                 if host != "localhost":
                     ipaddress.ip_address(host)

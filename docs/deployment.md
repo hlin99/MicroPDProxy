@@ -47,7 +47,7 @@ parameter reference and topology rules.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_API_KEY` | _(none)_ | API key for admin endpoints (`/instances/add`, `/instances/remove`). If unset, admin endpoints reject all requests. |
+| `ADMIN_API_KEY` | _(none)_ | API key for the admin endpoint (`/instances/add`). If unset, the admin endpoint rejects all requests. |
 | `DUMMY_MODEL_ID` | _(none)_ | Override model ID returned by `/v1/models`. Useful for dummy/testing setups. |
 | `XPYD_DECODE_IPS` | _(hardcoded list)_ | Space-separated decode node IPs for `xpyd_start_proxy.sh`. |
 | `XPYD_PREFILL_IPS` | _(hardcoded list)_ | Space-separated prefill node IPs for `xpyd_start_proxy.sh`. |
@@ -94,7 +94,8 @@ A typical production deployment:
 
 ## Monitoring and Logging
 
-- **Health:** `GET /health` returns per-node health status
+- **Health:** `GET /health` returns per-node health status, and answers `503` when
+  no backend node is reachable so load balancers can drain the proxy
 - **Status:** `GET /status` shows current instance pools
 - **Logs:** Set `XPYD_LOG` to enable file logging with timestamps
 - **Liveness probe:** `GET /ping` for container orchestrators
