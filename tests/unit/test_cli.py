@@ -393,15 +393,11 @@ class TestSubcommandParser:
 
     def test_validate_config_valid(self, tmp_path):
         p = tmp_path / "valid.yaml"
-        p.write_text(
-            textwrap.dedent(
-                """\
+        p.write_text(textwrap.dedent("""\
             model: /path/model
             decode:
               - "10.0.0.1:8000"
-        """
-            )
-        )
+        """))
         config = ProxyConfig.from_yaml(str(p))
         assert config.model == "/path/model"
 
