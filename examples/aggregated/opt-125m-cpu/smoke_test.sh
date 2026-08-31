@@ -10,6 +10,10 @@ export BACKEND="${BACKEND:-127.0.0.1:8000}"
 # shellcheck source=../../lib/proxy_api_smoke.sh
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 
+metrics_before="$(mktemp "${TMPDIR:-/tmp}/xpyd-metrics-before.XXXXXX")"
+trap 'rm -f "${metrics_before}"' EXIT
+capture_prometheus_metrics "${metrics_before}"
+
 completion="$(
     curl --fail-with-body --silent --show-error \
         "${PROXY_ENDPOINT}/v1/completions" \
@@ -39,43 +43,7 @@ assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 
 smoke_chat_completion
-
-stream="$(
-    curl --fail --silent --show-error --no-buffer \
-        "${PROXY_ENDPOINT}/v1/completions" \
-        -H "Content-Type: application/json" \
-        -d '{
-            "model": "facebook/opt-125m",
-            "prompt": "The streaming proxy test says",
-            "max_tokens": 4,
-            "temperature": 0,
-            "stream": true,
-            "stream_options": {"include_usage": true}
-        }'
-)"
-
-python -c '
-import json
-import sys
-
-events = [
-    line.removeprefix("data: ")
-    for line in sys.stdin.read().splitlines()
-    if line.startswith("data: ")
-]
-assert events and events[-1] == "[DONE]", events
-chunks = [json.loads(event) for event in events[:-1]]
-assert chunks, events
-assert all(chunk["object"] == "text_completion" for chunk in chunks), chunks
-assert all(chunk["model"] == "facebook/opt-125m" for chunk in chunks), chunks
-assert "".join(
-    choice["text"]
-    for chunk in chunks
-    for choice in chunk["choices"]
-), chunks
-usage_chunks = [chunk["usage"] for chunk in chunks if chunk.get("usage")]
-assert usage_chunks[-1]["completion_tokens"] == 4, chunks
-' <<<"${stream}"
+smoke_streaming_metrics aggregated
 
 health="$(
     curl --fail --silent --show-error "${PROXY_ENDPOINT}/health"
@@ -125,14 +93,9 @@ unknown_model_status="$(
 )"
 [[ "${unknown_model_status}" == "404" ]]
 
-metrics="$(
-    curl --fail --silent --show-error "${PROXY_ENDPOINT}/metrics"
-)"
-grep -q 'proxy_requests_total{endpoint="/v1/completions"}' <<<"${metrics}"
-grep -q 'proxy_requests_total{endpoint="/v1/chat/completions"}' <<<"${metrics}"
-grep -q "proxy_request_duration_seconds" <<<"${metrics}"
-grep -q "proxy_active_requests 0.0" <<<"${metrics}"
-
 smoke_all_endpoints
+validate_prometheus_metrics aggregated "${metrics_before}" 3
+rm -f "${metrics_before}"
+trap - EXIT
 
 echo "OPT-125M aggregated CPU API smoke tests passed."

@@ -13,6 +13,9 @@
 
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 MODEL="${MODEL:-facebook/opt-125m}"
+PROMETHEUS_VALIDATOR="$(
+    cd "$(dirname "${BASH_SOURCE[0]}")" && pwd
+)/validate_prometheus_metrics.py"
 
 # Status of a JSON POST, discarding the body.
 post_status() {
@@ -80,6 +83,79 @@ assert choice["finish_reason"] == "length", output
 assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${body}"
     echo "  /v1/chat/completions ok"
+}
+
+capture_prometheus_metrics() {
+    python "${PROMETHEUS_VALIDATOR}" capture \
+        --url "${PROXY_ENDPOINT}" \
+        --output "$1"
+}
+
+smoke_streaming_metrics() {
+    local mode=$1
+    local stream_file stream_pid observed=0
+    stream_file="$(mktemp "${TMPDIR:-/tmp}/xpyd-metrics-stream.XXXXXX")"
+
+    curl --fail --silent --show-error --no-buffer \
+        "${PROXY_ENDPOINT}/v1/completions" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model\": \"${MODEL}\",
+            \"prompt\": \"The streaming metrics test says\",
+            \"max_tokens\": 64,
+            \"temperature\": 0,
+            \"ignore_eos\": true,
+            \"stream\": true,
+            \"stream_options\": {\"include_usage\": true}
+        }" >"${stream_file}" &
+    stream_pid=$!
+
+    for _ in {1..200}; do
+        if python "${PROMETHEUS_VALIDATOR}" active \
+            --url "${PROXY_ENDPOINT}" --mode "${mode}" 2>/dev/null; then
+            observed=1
+            break
+        fi
+        if ! kill -0 "${stream_pid}" 2>/dev/null; then
+            break
+        fi
+        sleep 0.05
+    done
+    wait "${stream_pid}"
+    if ((observed == 0)); then
+        rm -f "${stream_file}"
+        echo "ERROR: Prometheus gauges did not expose the active request." >&2
+        return 1
+    fi
+
+    python -c '
+import json
+import sys
+
+events = [
+    line.removeprefix("data: ")
+    for line in sys.stdin.read().splitlines()
+    if line.startswith("data: ")
+]
+assert events and events[-1] == "[DONE]", events
+chunks = [json.loads(event) for event in events[:-1]]
+assert any(chunk.get("choices") for chunk in chunks), chunks
+usage = [chunk["usage"] for chunk in chunks if chunk.get("usage")]
+assert usage and usage[-1]["completion_tokens"] == 64, chunks
+' <"${stream_file}"
+    rm -f "${stream_file}"
+}
+
+validate_prometheus_metrics() {
+    local mode=$1 before=$2 completion_delta=$3
+    shift 3
+    python "${PROMETHEUS_VALIDATOR}" compare \
+        --url "${PROXY_ENDPOINT}" \
+        --mode "${mode}" \
+        --before "${before}" \
+        --completion-delta "${completion_delta}" \
+        --chat-delta 1 \
+        "$@"
 }
 
 smoke_informational_endpoints() {

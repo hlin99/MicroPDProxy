@@ -198,6 +198,24 @@ class TestNewMetricDefinitions:
     def test_prefill_queue_depth_exists(self):
         assert proxy_prefill_queue_depth is not None
 
+    def test_prefill_queue_depth_is_initialized_for_routed_pair(self):
+        proxy_prefill_queue_depth.labels(
+            prefill_instance="queue:8001",
+            decode_instance="queue:8002",
+            model="queue-model",
+        ).set(0)
+        assert (
+            REGISTRY.get_sample_value(
+                "proxy_prefill_queue_depth",
+                {
+                    "prefill_instance": "queue:8001",
+                    "decode_instance": "queue:8002",
+                    "model": "queue-model",
+                },
+            )
+            == 0
+        )
+
     def test_prefill_requests_total_exists(self):
         assert proxy_prefill_requests_total is not None
 
