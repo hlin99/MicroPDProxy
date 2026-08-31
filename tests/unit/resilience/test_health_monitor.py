@@ -160,9 +160,7 @@ class TestHealthCheckConfig:
 
     def test_yaml_integration(self, tmp_path):
         p = tmp_path / "config.yaml"
-        p.write_text(
-            textwrap.dedent(
-                """\
+        p.write_text(textwrap.dedent("""\
             model: /m
             decode:
               - "10.0.0.1:8000"
@@ -170,9 +168,7 @@ class TestHealthCheckConfig:
               enabled: true
               interval_seconds: 5
               timeout_seconds: 2
-            """
-            )
-        )
+            """))
         import argparse
 
         args = argparse.Namespace(
@@ -193,15 +189,11 @@ class TestHealthCheckConfig:
 
     def test_yaml_default(self, tmp_path):
         p = tmp_path / "config.yaml"
-        p.write_text(
-            textwrap.dedent(
-                """\
+        p.write_text(textwrap.dedent("""\
             model: /m
             decode:
               - "10.0.0.1:8000"
-            """
-            )
-        )
+            """))
         import argparse
 
         args = argparse.Namespace(

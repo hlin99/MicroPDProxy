@@ -189,9 +189,7 @@ class TestProxyConfigFromYaml:
         import textwrap
 
         p = tmp_path / "cfg.yaml"
-        p.write_text(
-            textwrap.dedent(
-                """\
+        p.write_text(textwrap.dedent("""\
             model: /path/model
             prefill:
               - "10.0.0.1:8001"
@@ -208,9 +206,7 @@ class TestProxyConfigFromYaml:
               enabled: true
               interval_seconds: 5.0
               timeout_seconds: 2.0
-        """
-            )
-        )
+        """))
         cfg = ProxyConfig.from_yaml(str(p))
         assert cfg.port == 9000
         assert cfg.log_level == "debug"

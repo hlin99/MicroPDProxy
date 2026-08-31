@@ -110,8 +110,7 @@ def _make_args(**overrides):
 
 class TestYamlTopologyExpansion:
     def test_topology_style_yaml(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             prefill:
               nodes:
@@ -126,8 +125,7 @@ class TestYamlTopologyExpansion:
               tp_size: 1
               dp_size: 16
               world_size_per_node: 8
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         cfg = ProxyConfig.from_args(args)
         assert cfg.prefill == ["10.0.0.1:8100"]
@@ -136,35 +134,30 @@ class TestYamlTopologyExpansion:
         assert cfg.decode[8] == "10.0.0.4:8200"
 
     def test_flat_list_still_works(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               - "10.0.0.1:8000"
               - "10.0.0.2:8000"
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         cfg = ProxyConfig.from_args(args)
         assert cfg.decode == ["10.0.0.1:8000", "10.0.0.2:8000"]
 
     def test_topology_missing_keys(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               nodes:
                 - "10.0.0.1:8200"
               tp_size: 1
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         with pytest.raises(ValueError, match="missing keys"):
             ProxyConfig.from_args(args)
 
     def test_topology_invalid_constraint(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               nodes:
@@ -172,15 +165,13 @@ class TestYamlTopologyExpansion:
               tp_size: 8
               dp_size: 2
               world_size_per_node: 8
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         with pytest.raises(ValueError, match="topology invalid"):
             ProxyConfig.from_args(args)
 
     def test_cli_overrides_yaml_topology(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               nodes:
@@ -188,8 +179,7 @@ class TestYamlTopologyExpansion:
               tp_size: 1
               dp_size: 1
               world_size_per_node: 1
-            """
-        )
+            """)
         args = _make_args(
             config=str(p),
             decode=["10.0.0.99:9999"],
@@ -198,34 +188,29 @@ class TestYamlTopologyExpansion:
         assert cfg.decode == ["10.0.0.99:9999"]
 
     def test_log_level_from_yaml(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               - "10.0.0.1:8000"
             log_level: debug
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         cfg = ProxyConfig.from_args(args)
         assert cfg.log_level == "debug"
 
     def test_invalid_log_level(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               - "10.0.0.1:8000"
             log_level: verbose
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         with pytest.raises(ValueError, match="log_level"):
             ProxyConfig.from_args(args)
 
     def test_topology_unknown_keys_rejected(self, tmp_yaml):
-        p = tmp_yaml(
-            """\
+        p = tmp_yaml("""\
             model: /path/model
             decode:
               nodes:
@@ -234,8 +219,7 @@ class TestYamlTopologyExpansion:
               dp_size: 1
               world_size_per_node: 1
               extra_key: bad
-            """
-        )
+            """)
         args = _make_args(config=str(p))
         with pytest.raises(ValueError, match="unknown keys"):
             ProxyConfig.from_args(args)
