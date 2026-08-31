@@ -44,4 +44,6 @@ topology agnostic, which lets the shared checks also run while part of the
 deployment is offline. The lifecycle finishes by adding a healthy backend
 alias through `/instances/add` and verifying the new role count and member,
 covering the admin endpoint's successful mutation path without affecting later
-traffic.
+traffic. It then drains and removes the aggregated backend through
+`/instances/remove`, verifies it disappears from `/status/instances`, and
+checks that subsequent inference returns 503.

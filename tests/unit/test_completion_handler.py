@@ -4,11 +4,13 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 from starlette.responses import JSONResponse
 
 from xpyd.routes.completions import (
     _chat_completion_nonstream,
     _chat_completion_stream,
+    _RequestReservation,
     _zmq_nonstream_generator,
     _zmq_stream_generator,
     build_kv_prepare_request,
@@ -576,8 +578,61 @@ class TestHandleCompletion:
 
         assert isinstance(result, JSONResponse)
         assert result.status_code == 503
-        server.exception_handler.assert_called_once()
+        server.exception_handler.assert_not_called()
         track_end.assert_called_once_with("/v1/completions", 0)
+
+    def test_request_reservation_releases_each_node_once(self, server):
+        server.exception_handler = MagicMock()
+        reservation = _RequestReservation(
+            server,
+            "prefill:8000",
+            "decode:8000",
+            10,
+        )
+
+        reservation.release_all()
+        reservation.release_all()
+
+        server.exception_handler.assert_called_once_with(
+            prefill_instance="prefill:8000",
+            decode_instance="decode:8000",
+            req_len=10,
+        )
+
+    @pytest.mark.asyncio
+    async def test_nixl_prefill_parse_error_releases_reservations(self, server):
+        raw_request = AsyncMock()
+        raw_request.json = AsyncMock(
+            return_value={
+                "model": "model",
+                "prompt": "hello",
+                "max_tokens": 1,
+            }
+        )
+        raw_request.headers = {}
+        raw_request.client = None
+        server.disaggregated_mode = "nixl"
+        server.schedule = MagicMock(side_effect=["prefill:8000", "decode:8000"])
+        server.prefill_cycler = MagicMock()
+        server.decode_cycler = MagicMock()
+        server.exception_handler = MagicMock()
+        server._record_failure = MagicMock()
+
+        async def forward(*_args, **_kwargs):
+            yield b"not-json"
+
+        server.forward_request = forward
+
+        with pytest.raises(HTTPException, match="valid JSON"):
+            await handle_completion(
+                "/v1/completions", raw_request, server, is_chat=False
+            )
+
+        server.exception_handler.assert_called_once_with(
+            prefill_instance="prefill:8000",
+            decode_instance="decode:8000",
+            req_len=5,
+        )
 
     @pytest.mark.asyncio
     async def test_unknown_aggregated_model_ends_metrics(self, server):

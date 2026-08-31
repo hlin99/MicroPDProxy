@@ -34,6 +34,7 @@ class _AdminServer:
         self.decode_cycler = itertools.cycle(self.decode_instances or [""])
         self.scheduling_policy = type("_Policy", (), {"lock": threading.Lock()})()
         self.validate_instance = AsyncMock(return_value=valid)
+        self.drain_and_remove_instance = AsyncMock()
 
 
 @pytest.fixture(name="admin_key")
@@ -49,6 +50,11 @@ def _client(server: Any) -> TestClient:
 def _add(client: TestClient, payload: dict, key: str | None = API_KEY):
     headers = {} if key is None else {"x-api-key": key}
     return client.post("/instances/add", json=payload, headers=headers)
+
+
+def _remove(client: TestClient, payload: dict, key: str | None = API_KEY):
+    headers = {} if key is None else {"x-api-key": key}
+    return client.post("/instances/remove", json=payload, headers=headers)
 
 
 def test_missing_admin_key_env_is_a_server_error(
@@ -224,6 +230,89 @@ def test_status_reports_counts_and_members() -> None:
 def test_status_options_is_allowed() -> None:
     """CORS preflight is answered for ``/status``."""
     assert _client(_AdminServer()).options("/status").status_code == 200
+
+
+@pytest.mark.parametrize("route", ["/instances/add", "/instances/remove"])
+def test_instance_admin_options_are_allowed(route: str) -> None:
+    assert _client(_AdminServer()).options(route).status_code == 200
+
+
+def test_remove_drains_instance_before_success(admin_key: str) -> None:
+    server = _AdminServer(decode=["127.0.0.1:8200"])
+
+    response = _remove(
+        _client(server),
+        {
+            "type": "decode",
+            "instance": "127.0.0.1:8200",
+            "timeout_seconds": 12.5,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "message": "Removed 127.0.0.1:8200 from decode_instances."
+    }
+    server.drain_and_remove_instance.assert_awaited_once_with(
+        "decode", "127.0.0.1:8200", 12.5
+    )
+
+
+def test_remove_missing_instance_is_not_found(admin_key: str) -> None:
+    server = _AdminServer()
+    server.drain_and_remove_instance.side_effect = KeyError("missing")
+
+    response = _remove(
+        _client(server),
+        {"type": "decode", "instance": "127.0.0.1:8200"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_remove_wrong_role_is_invalid(admin_key: str) -> None:
+    server = _AdminServer()
+    server.drain_and_remove_instance.side_effect = ValueError("wrong role")
+
+    response = _remove(
+        _client(server),
+        {"type": "prefill", "instance": "127.0.0.1:8200"},
+    )
+
+    assert response.status_code == 400
+    assert "wrong role" in response.json()["error"]["message"]
+
+
+def test_remove_timeout_is_reported(admin_key: str) -> None:
+    server = _AdminServer()
+    server.drain_and_remove_instance.side_effect = TimeoutError(
+        "Timed out draining node"
+    )
+
+    response = _remove(
+        _client(server),
+        {"type": "decode", "instance": "127.0.0.1:8200"},
+    )
+
+    assert response.status_code == 504
+    assert "Timed out draining node" in response.json()["error"]["message"]
+
+
+@pytest.mark.parametrize("timeout", [-1, 3601, "60", True])
+def test_remove_rejects_invalid_timeout(admin_key: str, timeout: Any) -> None:
+    server = _AdminServer()
+
+    response = _remove(
+        _client(server),
+        {
+            "type": "decode",
+            "instance": "127.0.0.1:8200",
+            "timeout_seconds": timeout,
+        },
+    )
+
+    assert response.status_code == 400
+    server.drain_and_remove_instance.assert_not_awaited()
 
 
 def test_request_body_is_not_logged_at_warning(

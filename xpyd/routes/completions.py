@@ -47,6 +47,49 @@ _CHAT_ONLY_REQUEST_FIELDS = {
 }
 
 
+class _RequestReservation:
+    """Release each P/D scheduling reservation at most once."""
+
+    def __init__(
+        self,
+        server: "Proxy",
+        prefill_instance: str | None,
+        decode_instance: str | None,
+        request_len: int,
+    ) -> None:
+        self._server = server
+        self._prefill_instance = prefill_instance
+        self._decode_instance = decode_instance
+        self._request_len = request_len
+        self._prefill_released = prefill_instance is None
+        self._decode_released = decode_instance is None
+
+    def exception_handler(
+        self,
+        prefill_instance: str | None = None,
+        decode_instance: str | None = None,
+        req_len: int | None = None,
+    ) -> None:
+        release_prefill = prefill_instance is not None and not self._prefill_released
+        release_decode = decode_instance is not None and not self._decode_released
+        if not release_prefill and not release_decode:
+            return
+        self._prefill_released = self._prefill_released or release_prefill
+        self._decode_released = self._decode_released or release_decode
+        self._server.exception_handler(
+            prefill_instance=(self._prefill_instance if release_prefill else None),
+            decode_instance=self._decode_instance if release_decode else None,
+            req_len=self._request_len if req_len is None else req_len,
+        )
+
+    def release_all(self) -> None:
+        self.exception_handler(
+            prefill_instance=self._prefill_instance,
+            decode_instance=self._decode_instance,
+            req_len=self._request_len,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Pure helper functions (no server dependency or explicit server param)
 # ---------------------------------------------------------------------------
@@ -502,6 +545,7 @@ async def handle_completion(
     handler_name = "create_chat_completion" if is_chat else "create_completion"
     t_prefill_done = None
     decode_tracker = None
+    reservation = None
     try:
         try:
             request = await raw_request.json()
@@ -596,6 +640,12 @@ async def handle_completion(
             max_tokens=max_tokens,
             **_sched_kwargs,
         )
+        reservation = _RequestReservation(
+            server,
+            prefill_instance,
+            decode_instance,
+            total_length,
+        )
 
         if prefill_instance is None or decode_instance is None:
             logger.warning(
@@ -607,6 +657,7 @@ async def handle_completion(
                 },
             )
             track_request_end(endpoint, _metrics_start)
+            reservation.release_all()
             # Check for unknown model first to return a clean 404 without
             # triggering error-path side effects (logging, metrics, etc.)
             if requested_model and server.registry is not None:
@@ -617,11 +668,6 @@ async def handle_completion(
                         INVALID_REQUEST,
                         404,
                     )
-            server.exception_handler(
-                prefill_instance=prefill_instance,
-                decode_instance=decode_instance,
-                req_len=total_length,
-            )
             proxy_instance_errors_total.labels(
                 instance=str(prefill_instance or decode_instance or "unknown"),
                 error_type="no_available_instance",
@@ -684,7 +730,7 @@ async def handle_completion(
         except HTTPException as http_exc:
             if zmq_wait_for_notification and zmq_request_id is not None:
                 await server.zmq_notifications.discard(zmq_request_id)
-            server.exception_handler(prefill_instance, decode_instance, total_length)
+            reservation.release_all()
             server._record_failure(prefill_instance, decode_instance)
             proxy_instance_errors_total.labels(
                 instance=prefill_instance,
@@ -785,7 +831,7 @@ async def handle_completion(
             assert prefill_output is not None
             final_generator = _zmq_prefill_only_generator(
                 prefill_output,
-                server,
+                reservation,
                 prefill_instance,
                 decode_instance,
                 total_length,
@@ -816,7 +862,7 @@ async def handle_completion(
                     final_generator = _zmq_stream_generator(
                         prefill_output,
                         generator_d,
-                        server,
+                        reservation,
                         prefill_instance,
                         decode_instance,
                         total_length,
@@ -826,7 +872,7 @@ async def handle_completion(
                     final_generator = _zmq_nonstream_generator(
                         prefill_output,
                         generator_d,
-                        server,
+                        reservation,
                         prefill_instance,
                         decode_instance,
                         total_length,
@@ -857,7 +903,7 @@ async def handle_completion(
                 final_generator = generator_class(
                     generator_p,
                     generator_d,
-                    server,
+                    reservation,
                     prefill_instance,
                     decode_instance,
                     req_len=total_length,
@@ -876,9 +922,7 @@ async def handle_completion(
                     handler_name,
                 )
             except HTTPException as http_exc:
-                server.exception_handler(
-                    prefill_instance, decode_instance, total_length
-                )
+                reservation.release_all()
                 server._record_failure(prefill_instance, decode_instance)
                 proxy_instance_errors_total.labels(
                     instance=decode_instance,
@@ -898,6 +942,7 @@ async def handle_completion(
                 logger.error("[1] Exception in wrapped_generator: %s", str(e))
                 raise
             finally:
+                reservation.release_all()
                 if (
                     prefill_instance
                     and decode_instance
@@ -925,6 +970,8 @@ async def handle_completion(
 
         return StreamingResponse(wrapped_generator(), media_type=media_type)
     except HTTPException:
+        if reservation is not None:
+            reservation.release_all()
         if decode_instance and prefill_instance and t_prefill_done is not None:
             proxy_decode_active_requests.labels(
                 prefill_instance=prefill_instance,
@@ -934,6 +981,8 @@ async def handle_completion(
         track_request_end(endpoint, _metrics_start)
         raise
     except Exception:
+        if reservation is not None:
+            reservation.release_all()
         if decode_instance and prefill_instance and t_prefill_done is not None:
             proxy_decode_active_requests.labels(
                 prefill_instance=prefill_instance,

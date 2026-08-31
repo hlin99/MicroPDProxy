@@ -138,6 +138,16 @@ async def test_start_and_stop():
     await monitor.stop()
 
 
+def test_dynamic_node_membership():
+    monitor = HealthMonitor(nodes=["127.0.0.1:8000"])
+
+    monitor.add_node("127.0.0.1:8001")
+    monitor.add_node("127.0.0.1:8001")
+    monitor.remove_node("127.0.0.1:8000")
+
+    assert monitor.nodes == ["127.0.0.1:8001"]
+
+
 # ------------------------------------------------------------------
 # Config integration
 # ------------------------------------------------------------------

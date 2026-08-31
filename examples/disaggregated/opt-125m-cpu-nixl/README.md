@@ -47,7 +47,9 @@ both completion APIs, `/ping` on both verbs, `/version`, `/status`,
 `/status/instances`, the ten passthrough endpoints with their request
 validation, every registered `OPTIONS` route, and the admin endpoint's
 rejection paths. Each lifecycle finishes by adding a healthy backend alias
-through `/instances/add` and checking the resulting role membership and count.
+through `/instances/add`, then drains and removes a decode node through
+`/instances/remove`. A remaining decode node continues serving in multi-node
+topologies, while 1P1D correctly returns 503 after its only decode is removed.
 This is what proves passthrough requests reach a backend in disaggregated mode
 rather than failing to select one.
 OPT-125M is a generative model, so the pooling and scoring families are answered

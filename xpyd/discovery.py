@@ -63,12 +63,15 @@ class NodeDiscovery:
     @property
     def is_ready(self) -> bool:
         """True when the configured topology has enough healthy nodes."""
+        healthy_prefill = set(self.prefill_instances) & self.healthy_prefill
+        healthy_decode = set(self.decode_instances) & self.healthy_decode
+        healthy_aggregated = set(self.aggregated_instances) & self.healthy_aggregated
         has_disaggregated = (
             bool(self.decode_instances)
-            and len(self.healthy_decode) >= 1
-            and (not self.prefill_instances or len(self.healthy_prefill) >= 1)
+            and bool(healthy_decode)
+            and (not self.prefill_instances or bool(healthy_prefill))
         )
-        has_aggregated = len(self.healthy_aggregated) >= 1
+        has_aggregated = bool(healthy_aggregated)
         return has_disaggregated or has_aggregated
 
     async def start(self):
@@ -103,6 +106,21 @@ class NodeDiscovery:
             return True
         except asyncio.TimeoutError:
             return False
+
+    def remove_instance(self, role: str, address: str) -> None:
+        """Forget a dynamically removed instance and its readiness state."""
+        if role == "prefill":
+            if address in self.prefill_instances:
+                self.prefill_instances.remove(address)
+            self.healthy_prefill.discard(address)
+        elif role == "decode":
+            if address in self.decode_instances:
+                self.decode_instances.remove(address)
+            self.healthy_decode.discard(address)
+        else:
+            if address in self.aggregated_instances:
+                self.aggregated_instances.remove(address)
+            self.healthy_aggregated.discard(address)
 
     async def _probe_loop(self):
         """Periodically probe all nodes."""
@@ -179,7 +197,8 @@ class NodeDiscovery:
 
     @staticmethod
     def _role_heartbeat(role: str, configured: List[str], online: Set[str]) -> str:
-        return f"{role}={len(online)}/{len(configured)} online"
+        online_count = len(set(configured) & online)
+        return f"{role}={online_count}/{len(configured)} online"
 
     async def _probe_all(self, session: aiohttp.ClientSession):
         """Probe all prefill, decode, and aggregated nodes once."""
@@ -209,6 +228,9 @@ class NodeDiscovery:
             all_instances = self.aggregated_instances
         try:
             async with session.get(url) as resp:
+                if instance not in all_instances:
+                    healthy_set.discard(instance)
+                    return
                 if resp.status == 200:
                     if instance not in healthy_set:
                         healthy_set.add(instance)

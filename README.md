@@ -129,6 +129,7 @@ See also:
 | `/status` | `GET` | Basic node status |
 | `/status/instances` | `GET` | Per-instance health/circuit/load view |
 | `/instances/add` | `POST` | Add backend instance (admin API key required) |
+| `/instances/remove` | `POST` | Drain and remove a backend instance (admin API key required) |
 | `/tokenize`, `/detokenize` | `POST` | Forward tokenizer operations |
 | `/v1/embeddings` | `POST` | Forward embeddings |
 | `/pooling` | `POST` | Forward pooling |

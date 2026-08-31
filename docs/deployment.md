@@ -47,7 +47,7 @@ parameter reference and topology rules.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ADMIN_API_KEY` | _(none)_ | API key for the admin endpoint (`/instances/add`). If unset, the admin endpoint rejects all requests. |
+| `ADMIN_API_KEY` | _(none)_ | API key for the admin endpoints (`/instances/add` and `/instances/remove`). If unset, the admin endpoints reject all requests. |
 | `DUMMY_MODEL_ID` | _(none)_ | Override model ID returned by `/v1/models`. Useful for dummy/testing setups. |
 | `XPYD_DECODE_IPS` | _(hardcoded list)_ | Space-separated decode node IPs for `xpyd_start_proxy.sh`. |
 | `XPYD_PREFILL_IPS` | _(hardcoded list)_ | Space-separated prefill node IPs for `xpyd_start_proxy.sh`. |
