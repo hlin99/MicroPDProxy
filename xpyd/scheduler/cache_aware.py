@@ -44,7 +44,9 @@ class ConsistentHashRing:
 
     @staticmethod
     def _hash(key: str) -> int:
-        return int(hashlib.md5(key.encode()).hexdigest(), 16)  # noqa: S324
+        return int(
+            hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16
+        )
 
     def add_worker(self, addr: str) -> None:
         if addr in self._workers:
@@ -154,7 +156,7 @@ class CacheAwarePolicy(SchedulingPolicy):
         # Use a stable string representation for hashing
         prefix_str = " ".join(str(t) for t in prefix_tokens)
         return int(
-            hashlib.md5(prefix_str.encode()).hexdigest(), 16  # noqa: S324
+            hashlib.md5(prefix_str.encode(), usedforsecurity=False).hexdigest(), 16
         )
 
     # ------------------------------------------------------------------
