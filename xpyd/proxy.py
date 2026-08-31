@@ -186,6 +186,9 @@ class Proxy:
         self._aggregated_policies: dict[str, SchedulingPolicy] = {}
         self.custom_create_completion = custom_create_completion
         self.custom_create_chat_completion = custom_create_chat_completion
+        self.health_monitor = None
+        self.discovery = None
+        self._instance_mutation_lock = asyncio.Lock()
         self.router = APIRouter()
         self.setup_routes()
         self.generator = (
@@ -515,7 +518,7 @@ class Proxy:
             if Proxy.uses_round_robin_fallback(self, model)
             else self.scheduling_policy
         )
-        return policy.schedule(
+        selected = policy.schedule(
             cycler,
             is_prompt,
             request_len,
@@ -523,6 +526,9 @@ class Proxy:
             model=model,
             **kwargs,
         )
+        if selected is not None and self.registry is not None:
+            self.registry.increment_active_requests(selected)
+        return selected
 
     def schedule_completion(
         self,
@@ -533,6 +539,9 @@ class Proxy:
         instances = [
             instance for instance in (prefill_instance, decode_instance) if instance
         ]
+        if self.registry is not None:
+            for instance in instances:
+                self.registry.decrement_active_requests(instance)
         if (
             self.registry is not None
             and instances
@@ -549,6 +558,55 @@ class Proxy:
             decode_instance=decode_instance,
             req_len=req_len,
         )
+
+    async def drain_and_remove_instance(
+        self,
+        role: str,
+        address: str,
+        timeout_seconds: float,
+    ) -> None:
+        """Stop new scheduling, drain active requests, then remove an instance."""
+        if self.registry is None:
+            raise RuntimeError("Instance registry is unavailable.")
+
+        async with self._instance_mutation_lock:
+            info = self.registry.get_instance_info(address)
+            self.registry.begin_draining(role, address)
+            deadline = asyncio.get_running_loop().time() + timeout_seconds
+            while self.registry.get_active_requests(address) > 0:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    active = self.registry.get_active_requests(address)
+                    raise TimeoutError(
+                        f"Timed out draining {address}; {active} requests remain."
+                    )
+                await asyncio.sleep(min(0.05, remaining))
+
+            if role == "aggregated":
+                instances = self.aggregated_instances.get(info.model, [])
+                if address in instances:
+                    instances.remove(address)
+                if not instances:
+                    self.aggregated_instances.pop(info.model, None)
+            else:
+                instances = (
+                    self.prefill_instances
+                    if role == "prefill"
+                    else self.decode_instances
+                )
+                with self.scheduling_policy.lock:
+                    if address in instances:
+                        instances.remove(address)
+                    if role == "prefill":
+                        self.prefill_cycler = itertools.cycle(self.prefill_instances)
+                    else:
+                        self.decode_cycler = itertools.cycle(self.decode_instances)
+
+            if self.health_monitor is not None:
+                self.health_monitor.remove_node(address)
+            if self.discovery is not None:
+                self.discovery.remove_instance(role, address)
+            self.registry.remove(address)
 
     def get_total_token_length(self, prompt: Any, model: str = "") -> int:
         """Compute total token length — delegates to
@@ -1056,6 +1114,8 @@ class ProxyServer:
                 self.proxy_instance.ensure_tokenizer, model
             ),
         )
+        self.proxy_instance.discovery = discovery
+        self.proxy_instance.health_monitor = self.health_monitor
 
         app = FastAPI()
         app.add_middleware(
@@ -1070,9 +1130,14 @@ class ProxyServer:
         async def _check_readiness(request: Request, call_next):
             # Allow health/status/metrics endpoints through always
             path = request.url.path
-            if path in ("/health", "/ping", "/status", "/metrics") or path.startswith(
-                "/status/"
-            ):
+            if path in (
+                "/health",
+                "/ping",
+                "/status",
+                "/metrics",
+                "/instances/add",
+                "/instances/remove",
+            ) or path.startswith("/status/"):
                 return await call_next(request)
             if not discovery.is_ready:
                 return error_response("Waiting for backend nodes", PROXY_ERROR, 503)

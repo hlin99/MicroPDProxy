@@ -5,10 +5,11 @@ by the proxy process (default port `8868`).
 
 ## Authentication
 
-Most endpoints are open. The admin endpoint (`/instances/add`) requires an API
-key passed via the `X-API-Key` header. Set the key with the `ADMIN_API_KEY`
-environment variable. When `ADMIN_API_KEY` is unset the endpoint rejects every
-request with `500`; a wrong key returns `403` and a missing header `422`.
+Most endpoints are open. The admin endpoints (`/instances/add` and
+`/instances/remove`) require an API key passed via the `X-API-Key` header. Set
+the key with the `ADMIN_API_KEY` environment variable. When `ADMIN_API_KEY` is
+unset the endpoints reject every request with `500`; a wrong key returns `403`
+and a missing header `422`.
 
 ---
 
@@ -205,6 +206,44 @@ are not supported.
 **Errors:** `400` for an invalid type, address, port, duplicate instance or a
 failed validation handshake; `403` for a wrong API key; `422` when the
 `X-API-Key` header is absent; `500` when `ADMIN_API_KEY` is unset.
+
+**Auth:** Required. Pass `X-API-Key` header matching `ADMIN_API_KEY`.
+
+---
+
+### POST `/instances/remove`
+
+Drain and remove a prefill, decode, or aggregated instance. The instance is
+marked `draining` first, which immediately excludes it from new scheduling.
+The request then waits for its active request count to reach zero before
+removing it from discovery, health checks, scheduling, and the instance
+registry.
+
+**Request:**
+```json
+{
+  "type": "decode",
+  "instance": "10.0.0.4:8200",
+  "timeout_seconds": 60
+}
+```
+
+`type` must be `prefill`, `decode`, or `aggregated`. `timeout_seconds` is
+optional, defaults to 60 seconds, and must be between 0 and 3600. A timeout
+returns `504` and leaves the instance in `draining`, so it remains unavailable
+to new requests and the same removal request can be retried.
+
+**Response (`200`):**
+```json
+{
+  "message": "Removed 10.0.0.4:8200 from decode_instances."
+}
+```
+
+**Errors:** `400` for an invalid type, timeout, or role mismatch; `403` for a
+wrong API key; `404` when the instance is not registered; `422` when the
+`X-API-Key` header is absent; `500` when `ADMIN_API_KEY` is unset; `504` when
+active requests do not drain before the timeout.
 
 **Auth:** Required. Pass `X-API-Key` header matching `ADMIN_API_KEY`.
 

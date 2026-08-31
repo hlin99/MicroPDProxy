@@ -4,6 +4,7 @@
 import itertools
 from unittest.mock import MagicMock
 
+from xpyd.registry import InstanceRegistry
 from xpyd.scheduler.cache_aware import (
     DEFAULT_PREFIX_LENGTH,
     VIRTUAL_NODES_PER_WORKER,
@@ -190,6 +191,21 @@ class TestCacheAwarePolicy:
         cycler = itertools.cycle(["w1", "w2", "w3"])
         result = policy.schedule(cycler, prompt=prompt)
         assert result == policy.select(prompt=prompt)
+
+    def test_schedule_does_not_fall_back_to_a_draining_worker(self):
+        registry = InstanceRegistry()
+        registry.add("decode", "w1")
+        registry.mark_healthy("w1")
+        registry.begin_draining("decode", "w1")
+        policy = CacheAwarePolicy(workers=["w1"], registry=registry)
+
+        selected = policy.schedule(
+            itertools.cycle(["w1"]),
+            is_prompt=False,
+            prompt="test",
+        )
+
+        assert selected is None
 
     def test_custom_prefix_length(self):
         workers = ["w1", "w2", "w3"]

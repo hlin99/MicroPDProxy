@@ -54,6 +54,33 @@ class TestAddRemove:
         with pytest.raises(KeyError, match="not registered"):
             reg.remove("10.0.0.1:8200")
 
+    def test_begin_draining_excludes_instance_from_scheduling(self) -> None:
+        reg = InstanceRegistry()
+        reg.add("decode", "10.0.0.1:8200")
+        reg.mark_healthy("10.0.0.1:8200")
+
+        reg.begin_draining("decode", "10.0.0.1:8200")
+
+        assert reg.get_available_instances("decode") == []
+        assert reg.get_instance_info("10.0.0.1:8200").status == InstanceStatus.DRAINING
+
+    def test_health_results_do_not_cancel_draining(self) -> None:
+        reg = InstanceRegistry()
+        reg.add("decode", "10.0.0.1:8200")
+        reg.begin_draining("decode", "10.0.0.1:8200")
+
+        reg.mark_healthy("10.0.0.1:8200")
+        reg.mark_unhealthy("10.0.0.1:8200")
+
+        assert reg.get_instance_info("10.0.0.1:8200").status == InstanceStatus.DRAINING
+
+    def test_begin_draining_rejects_wrong_role(self) -> None:
+        reg = InstanceRegistry()
+        reg.add("decode", "10.0.0.1:8200")
+
+        with pytest.raises(ValueError, match="has role"):
+            reg.begin_draining("prefill", "10.0.0.1:8200")
+
     def test_get_all_instances(self) -> None:
         reg = InstanceRegistry()
         reg.add("decode", "10.0.0.1:8200")

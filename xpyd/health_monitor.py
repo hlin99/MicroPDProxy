@@ -54,6 +54,16 @@ class HealthMonitor:
         """Run a single probe cycle (useful for testing)."""
         await self._probe_all()
 
+    def add_node(self, address: str) -> None:
+        """Start probing a dynamically registered node."""
+        if address not in self.nodes:
+            self.nodes.append(address)
+
+    def remove_node(self, address: str) -> None:
+        """Stop scheduling future health probes for a removed node."""
+        if address in self.nodes:
+            self.nodes.remove(address)
+
     async def _loop(self) -> None:
         """Probe loop that runs until cancelled."""
         while True:
@@ -76,5 +86,10 @@ class HealthMonitor:
                     self._on_healthy(addr)
                 else:
                     self._on_unhealthy(addr)
+        except KeyError:
+            logger.debug("Ignoring health result for removed node %s", addr)
         except Exception:
-            self._on_unhealthy(addr)
+            try:
+                self._on_unhealthy(addr)
+            except KeyError:
+                logger.debug("Ignoring health failure for removed node %s", addr)

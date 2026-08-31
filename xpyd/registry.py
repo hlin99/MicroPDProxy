@@ -22,6 +22,7 @@ class InstanceStatus(str, Enum):
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
     UNKNOWN = "unknown"
+    DRAINING = "draining"
 
 
 @dataclass
@@ -125,6 +126,16 @@ class InstanceRegistry:
                 raise KeyError(f"Instance {address!r} is not registered.")
             del self._instances[address]
 
+    def begin_draining(self, role: str, address: str) -> None:
+        """Exclude an instance from new scheduling while requests drain."""
+        with self._lock:
+            instance = self._get_instance(address)
+            if instance.role != role:
+                raise ValueError(
+                    f"Instance {address!r} has role {instance.role!r}, not {role!r}."
+                )
+            instance.status = InstanceStatus.DRAINING
+
     def get_available_instances(self, role: str, model: str = "") -> List[str]:
         """Return addresses of healthy instances with closed circuit breakers.
 
@@ -215,7 +226,8 @@ class InstanceRegistry:
         """
         with self._lock:
             instance = self._get_instance(address)
-            instance.status = InstanceStatus.HEALTHY
+            if instance.status != InstanceStatus.DRAINING:
+                instance.status = InstanceStatus.HEALTHY
             instance.last_health_check = time.monotonic()
 
     def mark_unhealthy(self, address: str) -> None:
@@ -229,7 +241,8 @@ class InstanceRegistry:
         """
         with self._lock:
             instance = self._get_instance(address)
-            instance.status = InstanceStatus.UNHEALTHY
+            if instance.status != InstanceStatus.DRAINING:
+                instance.status = InstanceStatus.UNHEALTHY
             instance.last_health_check = time.monotonic()
 
     def record_success(self, address: str) -> None:

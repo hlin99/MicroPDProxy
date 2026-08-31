@@ -128,3 +128,35 @@ class TestDiscoveryAggregatedReady:
         )
         d.healthy_aggregated.add("10.0.0.3:8000")
         assert d.is_ready is True
+
+    def test_removed_instance_no_longer_contributes_to_readiness(self):
+        discovery = NodeDiscovery(
+            prefill_instances=[],
+            decode_instances=[],
+            aggregated_instances=["10.0.0.1:8000"],
+        )
+        discovery.healthy_aggregated.add("10.0.0.1:8000")
+
+        discovery.remove_instance("aggregated", "10.0.0.1:8000")
+
+        assert discovery.aggregated_instances == []
+        assert discovery.healthy_aggregated == set()
+        assert discovery.is_ready is False
+
+    def test_stale_health_result_is_excluded_from_counts_and_readiness(self):
+        discovery = NodeDiscovery(
+            prefill_instances=[],
+            decode_instances=[],
+            aggregated_instances=[],
+        )
+        discovery.healthy_aggregated.add("10.0.0.1:8000")
+
+        assert discovery.is_ready is False
+        assert (
+            discovery._role_heartbeat(
+                "aggregated",
+                discovery.aggregated_instances,
+                discovery.healthy_aggregated,
+            )
+            == "aggregated=0/0 online"
+        )

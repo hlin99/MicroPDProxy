@@ -191,8 +191,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
                     user=user,
                     client_ip=client_ip,
                 )
-            # No candidates for this role in registry – fall back to cycler
-            return next(cycler)
+            return None
         return self.select(
             header=header,
             session_id=session_id,
