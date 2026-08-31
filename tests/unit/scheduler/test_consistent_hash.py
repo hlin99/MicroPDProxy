@@ -4,6 +4,7 @@
 import itertools
 from unittest.mock import patch
 
+from xpyd.registry import InstanceRegistry
 from xpyd.scheduler.consistent_hash import ConsistentHashPolicy
 
 
@@ -88,6 +89,21 @@ class TestConsistentHashPolicy:
         # header takes priority over user/client_ip in schedule too
         r7 = policy.schedule(cycler, header="sess-X", user="other", client_ip="9.9.9.9")
         assert r7 == r1
+
+    def test_schedule_does_not_fall_back_to_a_draining_worker(self):
+        registry = InstanceRegistry()
+        registry.add("decode", "w1")
+        registry.mark_healthy("w1")
+        registry.begin_draining("decode", "w1")
+        policy = ConsistentHashPolicy(workers=["w1"], registry=registry)
+
+        selected = policy.schedule(
+            itertools.cycle(["w1"]),
+            is_prompt=False,
+            session_id="session",
+        )
+
+        assert selected is None
 
     def test_hash_collision_handling(self):
         """Collision in the hash ring is skipped gracefully."""

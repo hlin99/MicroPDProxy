@@ -234,6 +234,5 @@ class CacheAwarePolicy(SchedulingPolicy):
             candidates = set(self._registry.get_available_instances(role, model=model))
             if candidates:
                 return self.select_from(candidates, prompt=prompt)
-            # No candidates for this role – fall back to cycler
-            return next(cycler)
+            return None
         return self.select(prompt=prompt)

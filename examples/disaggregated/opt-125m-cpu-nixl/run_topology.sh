@@ -272,5 +272,11 @@ start_node decode 0
 run_smoke_test
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 smoke_admin_success decode 127.0.0.1:8100
+REMOVE_INFERENCE_STATUS=200
+if ((DECODE_COUNT == 1)); then
+    REMOVE_INFERENCE_STATUS=503
+fi
+MODEL=facebook/opt-125m \
+    smoke_admin_remove_draining decode "" "${REMOVE_INFERENCE_STATUS}"
 
 echo "OPT-125M CPU NIXL TCP ${PREFILL_COUNT}P${DECODE_COUNT}D lifecycle test passed."

@@ -244,7 +244,7 @@ smoke_options_endpoints() {
 
     local path
     for path in /status /health /ping /v1/models /version \
-        /v1/completions /v1/chat/completions; do
+        /v1/completions /v1/chat/completions /instances/add /instances/remove; do
         assert_status "OPTIONS ${path}" 200 "$(
             curl --silent --output /dev/null --write-out "%{http_code}" \
                 --request OPTIONS "${PROXY_ENDPOINT}${path}"
@@ -253,12 +253,17 @@ smoke_options_endpoints() {
     echo "  all registered non-passthrough OPTIONS endpoints ok"
 }
 
-admin_post() {
+admin_request() {
+    local path=$1 key=$2 body=$3
     curl --silent --output /dev/null --write-out "%{http_code}" \
-        "${PROXY_ENDPOINT}/instances/add" \
+        "${PROXY_ENDPOINT}${path}" \
         -H "Content-Type: application/json" \
-        -H "x-api-key: $1" \
-        -d "$2"
+        -H "x-api-key: ${key}" \
+        -d "${body}"
+}
+
+admin_post() {
+    admin_request /instances/add "$1" "$2"
 }
 
 smoke_admin_endpoint() {
@@ -292,6 +297,26 @@ smoke_admin_endpoint() {
         assert_status "/instances/add for an unreachable instance" 400 "$(
             admin_post "${ADMIN_API_KEY}" \
                 "{\"type\": \"prefill\", \"instance\": \"127.0.0.1:9100\"}"
+        )"
+        assert_status "/instances/remove without API key" 422 "$(
+            post_status /instances/remove \
+                "{\"type\": \"decode\", \"instance\": \"127.0.0.1:9100\"}"
+        )"
+        assert_status "/instances/remove with a wrong API key" 403 "$(
+            admin_request /instances/remove "definitely-wrong" \
+                "{\"type\": \"decode\", \"instance\": \"127.0.0.1:9100\"}"
+        )"
+        assert_status "/instances/remove with an invalid role" 400 "$(
+            admin_request /instances/remove "${ADMIN_API_KEY}" \
+                "{\"type\": \"invalid\", \"instance\": \"127.0.0.1:9100\"}"
+        )"
+        assert_status "/instances/remove with an invalid timeout" 400 "$(
+            admin_request /instances/remove "${ADMIN_API_KEY}" \
+                "{\"type\": \"decode\", \"instance\": \"127.0.0.1:9100\", \"timeout_seconds\": -1}"
+        )"
+        assert_status "/instances/remove for an unknown instance" 404 "$(
+            admin_request /instances/remove "${ADMIN_API_KEY}" \
+                "{\"type\": \"decode\", \"instance\": \"127.0.0.1:9100\"}"
         )"
     else
         assert_status "/instances/add without ADMIN_API_KEY configured" 500 "$(
@@ -349,6 +374,202 @@ assert after[count_key] == before[count_key] + 1, (before, after)
 assert body == {"message": f"Added {instance} to {role}_instances."}, body
 PY
     echo "  added ${instance} to the ${role} pool"
+}
+
+smoke_admin_remove_success() {
+    local role=$1 instance=$2 expected_inference=$3 result body status instances
+    echo "=== Admin remove success path ==="
+
+    result="$(
+        curl --silent --show-error --write-out $'\n%{http_code}' \
+            "${PROXY_ENDPOINT}/instances/remove" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${ADMIN_API_KEY}" \
+            -d "{
+                \"type\": \"${role}\",
+                \"instance\": \"${instance}\",
+                \"timeout_seconds\": 30
+            }"
+    )"
+    body="${result%$'\n'*}"
+    status="${result##*$'\n'}"
+    if ! assert_status "/instances/remove success path" 200 "${status}"; then
+        echo "response: ${body}" >&2
+        return 1
+    fi
+
+    instances="$(curl --fail --silent --show-error \
+        "${PROXY_ENDPOINT}/status/instances")"
+    INSTANCES="${instances}" ROLE="${role}" INSTANCE="${instance}" \
+        BODY="${body}" python - <<'PY'
+import json
+import os
+
+instances = json.loads(os.environ["INSTANCES"])
+role = os.environ["ROLE"]
+instance = os.environ["INSTANCE"]
+body = json.loads(os.environ["BODY"])
+assert instance not in {
+    item["address"] for item in instances[f"{role}_instances"]
+}, instances
+assert body == {"message": f"Removed {instance} from {role}_instances."}, body
+PY
+
+    assert_status "inference after removing ${instance}" "${expected_inference}" "$(
+        post_status /v1/completions \
+            "{\"model\": \"${MODEL}\", \"prompt\": \"after removal\", \"max_tokens\": 1}"
+    )"
+    echo "  drained and removed ${instance} from the ${role} pool"
+}
+
+smoke_admin_remove_draining() {
+    local role=$1 requested_instance=$2 expected_inference=$3
+    local instance="${requested_instance}"
+    local stream_file remove_file stream_pid remove_pid active state new_status
+    local observed
+    stream_file="$(mktemp "${TMPDIR:-/tmp}/xpyd-drain-stream.XXXXXX")"
+    remove_file="$(mktemp "${TMPDIR:-/tmp}/xpyd-drain-remove.XXXXXX")"
+    echo "=== Admin remove draining path ==="
+
+    curl --silent --show-error --no-buffer \
+        "${PROXY_ENDPOINT}/v1/completions" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"model\": \"${MODEL}\",
+            \"prompt\": \"drain this request\",
+            \"max_tokens\": 32,
+            \"temperature\": 0,
+            \"ignore_eos\": true,
+            \"stream\": true
+        }" >"${stream_file}" &
+    stream_pid=$!
+
+    active=0
+    for _ in {1..200}; do
+        observed="$(
+            curl --fail --silent --show-error \
+                "${PROXY_ENDPOINT}/status/instances" |
+                INSTANCE="${requested_instance}" ROLE="${role}" python -c '
+import json
+import os
+import sys
+
+role = os.environ["ROLE"]
+instances = json.load(sys.stdin)[f"{role}_instances"]
+requested = os.environ["INSTANCE"]
+match = next(
+    (
+        item
+        for item in instances
+        if item["active_requests"] > 0
+        and (not requested or item["address"] == requested)
+    ),
+    None,
+)
+print(
+    "{} {}".format(match["address"], match["active_requests"])
+    if match
+    else "- 0"
+)
+'
+        )"
+        read -r instance active <<<"${observed}"
+        if ((active > 0)); then
+            break
+        fi
+        sleep 0.05
+    done
+    if ((active == 0)); then
+        wait "${stream_pid}" || true
+        rm -f "${stream_file}" "${remove_file}"
+        echo "ERROR: did not observe an active request on ${instance}." >&2
+        return 1
+    fi
+
+    curl --silent --show-error --write-out $'\n%{http_code}' \
+        "${PROXY_ENDPOINT}/instances/remove" \
+        -H "Content-Type: application/json" \
+        -H "x-api-key: ${ADMIN_API_KEY}" \
+        -d "{
+            \"type\": \"${role}\",
+            \"instance\": \"${instance}\",
+            \"timeout_seconds\": 120
+        }" >"${remove_file}" &
+    remove_pid=$!
+
+    state=""
+    for _ in {1..200}; do
+        state="$(
+            curl --fail --silent --show-error \
+                "${PROXY_ENDPOINT}/status/instances" |
+                INSTANCE="${instance}" ROLE="${role}" python -c '
+import json
+import os
+import sys
+
+role = os.environ["ROLE"]
+instances = json.load(sys.stdin)[f"{role}_instances"]
+match = next(
+    (item for item in instances if item["address"] == os.environ["INSTANCE"]),
+    None,
+)
+print(match["status"] if match else "removed")
+'
+        )"
+        if [[ "${state}" == "draining" ]]; then
+            break
+        fi
+        sleep 0.05
+    done
+
+    if ! kill -0 "${remove_pid}" 2>/dev/null; then
+        wait "${stream_pid}" || true
+        wait "${remove_pid}" || true
+        rm -f "${stream_file}" "${remove_file}"
+        echo "ERROR: removal returned before the active request drained." >&2
+        return 1
+    fi
+
+    new_status="$(
+        post_status /v1/completions \
+            "{\"model\": \"${MODEL}\", \"prompt\": \"new request\", \"max_tokens\": 1}"
+    )"
+    wait "${stream_pid}"
+    wait "${remove_pid}"
+
+    local result body status
+    result="$(cat "${remove_file}")"
+    body="${result%$'\n'*}"
+    status="${result##*$'\n'}"
+    rm -f "${stream_file}" "${remove_file}"
+
+    [[ "${state}" == "draining" ]] || {
+        echo "ERROR: expected ${instance} to enter draining, got ${state}." >&2
+        return 1
+    }
+    assert_status \
+        "new inference while ${instance} drains" \
+        "${expected_inference}" \
+        "${new_status}"
+    assert_status "/instances/remove draining path" 200 "${status}"
+    local instances
+    instances="$(curl --fail --silent --show-error \
+        "${PROXY_ENDPOINT}/status/instances")"
+    INSTANCES="${instances}" ROLE="${role}" INSTANCE="${instance}" \
+        BODY="${body}" python - <<'PY'
+import json
+import os
+
+instances = json.loads(os.environ["INSTANCES"])
+role = os.environ["ROLE"]
+instance = os.environ["INSTANCE"]
+body = json.loads(os.environ["BODY"])
+assert instance not in {
+    item["address"] for item in instances[f"{role}_instances"]
+}, instances
+assert body == {"message": f"Removed {instance} from {role}_instances."}, body
+PY
+    echo "  stopped new scheduling and drained ${instance} before removal"
 }
 
 smoke_all_endpoints() {

@@ -212,6 +212,8 @@ start_decode
 bash "${SCRIPT_DIR}/smoke_test.sh"
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 smoke_admin_success decode 127.0.0.1:8100
+MODEL=facebook/opt-125m \
+    smoke_admin_remove_draining decode "" 503
 
 wait_for_log \
     "Node heartbeat | mode=disaggregated | P=0/1 online | D=0/1 online"

@@ -103,9 +103,57 @@ def register(router: APIRouter, server) -> None:
             logger.error("Error in add_instance_endpoint: %s", str(e))
             return error_response(f"Internal error: {e}", SERVER_ERROR, 500)
 
-    def remove_instance_endpoint(instance_type, instance):
-        return
+    async def remove_instance_endpoint(
+        request: Request,
+        x_api_key: str = Header(...),  # noqa: B008 - FastAPI dependency idiom
+    ):
+        auth_error = _authenticate_api_key(x_api_key)
+        if auth_error:
+            return auth_error
+
+        try:
+            data = await request.json()
+            instance_type = data.get("type")
+            instance = data.get("instance")
+            timeout_seconds = data.get("timeout_seconds", 60)
+            if instance_type not in ["prefill", "decode", "aggregated"]:
+                return error_response("Invalid instance type", INVALID_REQUEST, 400)
+            if not isinstance(instance, str) or not instance:
+                return error_response("Invalid instance", INVALID_REQUEST, 400)
+            if (
+                isinstance(timeout_seconds, bool)
+                or not isinstance(timeout_seconds, (int, float))
+                or not 0 <= timeout_seconds <= 3600
+            ):
+                return error_response(
+                    "timeout_seconds must be between 0 and 3600",
+                    INVALID_REQUEST,
+                    400,
+                )
+
+            await server.drain_and_remove_instance(
+                instance_type,
+                instance,
+                float(timeout_seconds),
+            )
+            return JSONResponse(
+                content={
+                    "message": (f"Removed {instance} from {instance_type}_instances.")
+                }
+            )
+        except KeyError:
+            return error_response("Instance not found", INVALID_REQUEST, 404)
+        except ValueError as exc:
+            return error_response(str(exc), INVALID_REQUEST, 400)
+        except TimeoutError as exc:
+            return error_response(str(exc), SERVER_ERROR, 504)
+        except Exception as exc:
+            logger.exception("Error in remove_instance_endpoint")
+            return error_response(f"Internal error: {exc}", SERVER_ERROR, 500)
 
     router.get("/status", response_class=JSONResponse)(get_status)
     router.post("/instances/add")(add_instance_endpoint)
+    router.post("/instances/remove")(remove_instance_endpoint)
     router.options("/status")(lambda: None)
+    router.options("/instances/add")(lambda: None)
+    router.options("/instances/remove")(lambda: None)
