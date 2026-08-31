@@ -16,11 +16,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/pip
@@ -41,7 +41,7 @@ jobs:
           bash examples/aggregated/opt-125m-cpu/run_all.sh
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: aggregated-opt-125m-cpu-logs
           path: examples/aggregated/opt-125m-cpu/logs/
@@ -51,11 +51,11 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/pip
@@ -81,7 +81,7 @@ jobs:
           bash examples/disaggregated/opt-125m-cpu-nixl/run_all.sh
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: disaggregated-opt-125m-cpu-nixl-1p1d-logs
           path: examples/disaggregated/opt-125m-cpu-nixl/logs/
@@ -107,11 +107,11 @@ jobs:
             prefill-count: 2
             decode-count: 2
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cache/pip
@@ -140,7 +140,7 @@ jobs:
             "${{ matrix.decode-count }}"
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: disaggregated-opt-125m-cpu-nixl-${{ matrix.topology }}-logs
           path: examples/disaggregated/opt-125m-cpu-nixl/logs/
