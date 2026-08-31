@@ -203,9 +203,7 @@ def test_non_json_backend_payload_is_returned_as_text() -> None:
     """vLLM answers ``/health`` with an empty non-JSON body."""
     proxy = make_proxy(prefill=["127.0.0.1:8100"])
 
-    response, _ = _fetch(
-        proxy, "/health", 1, lambda *_a: FakeResponse(200, None, "OK")
-    )
+    response, _ = _fetch(proxy, "/health", 1, lambda *_a: FakeResponse(200, None, "OK"))
 
     assert response.status_code == 200
     body = json.loads(response.body)

@@ -32,9 +32,7 @@ class _AdminServer:
         self.decode_instances = list(decode or [])
         self.prefill_cycler = itertools.cycle(self.prefill_instances or [""])
         self.decode_cycler = itertools.cycle(self.decode_instances or [""])
-        self.scheduling_policy = type(
-            "_Policy", (), {"lock": threading.Lock()}
-        )()
+        self.scheduling_policy = type("_Policy", (), {"lock": threading.Lock()})()
         self.validate_instance = AsyncMock(return_value=valid)
 
 
@@ -158,9 +156,7 @@ def test_non_ip_host_is_rejected(admin_key: str) -> None:
     """Hostnames other than localhost are not resolvable addresses here."""
     server = _AdminServer()
 
-    response = _add(
-        _client(server), {"type": "prefill", "instance": "not-an-ip:8100"}
-    )
+    response = _add(_client(server), {"type": "prefill", "instance": "not-an-ip:8100"})
 
     assert response.status_code == 400
     assert "Invalid instance address" in response.json()["error"]["message"]

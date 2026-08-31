@@ -70,9 +70,7 @@ def test_invalid_json_body_is_rejected() -> None:
     """A malformed body fails fast with 400 instead of reaching a backend."""
     proxy = make_proxy(prefill=["127.0.0.1:8100"])
 
-    response, session = _forward(
-        proxy, json.JSONDecodeError("bad", "", 0), _ok
-    )
+    response, session = _forward(proxy, json.JSONDecodeError("bad", "", 0), _ok)
 
     assert response.status_code == 400
     assert _body_of(response)["error"]["type"] == "invalid_request_error"
@@ -163,8 +161,8 @@ def test_registry_roles_are_tried_in_order(
 ) -> None:
     """Healthy instances from the registry take precedence over static lists."""
     registry = MagicMock()
-    registry.get_available_instances.side_effect = (
-        lambda role, model="": available.get(role, [])
+    registry.get_available_instances.side_effect = lambda role, model="": available.get(
+        role, []
     )
     proxy = make_proxy(prefill=["10.0.0.1:9999"], registry=registry)
 
