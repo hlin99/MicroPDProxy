@@ -40,5 +40,18 @@ every node, perform NIXL TCP inference, then validate prefill and decode loss
 and reconnection independently. Multi-node tests also inspect per-instance
 metrics to ensure round-robin requests exercised every configured node.
 `/status/instances` and the concise disaggregated heartbeat are checked.
+
+Every lifecycle also runs the shared endpoint checks from
+`../../lib/proxy_api_smoke.sh`, the same suite the aggregated CPU example uses:
+`/ping` on both verbs, `/version`, `/status`, `/status/instances`, the ten
+passthrough endpoints with their request validation and `OPTIONS` handling, and
+the admin endpoint's rejection paths. This is what proves passthrough requests
+reach a backend in disaggregated mode rather than failing to select one.
+OPT-125M is a generative model, so the pooling and scoring families are answered
+with a 4xx by vLLM itself; the checks assert those requests are *forwarded* (any
+non-5xx status) instead of asserting a payload. While the topology is
+incomplete, the passthrough endpoints and `/health` are asserted to answer 503.
+`run_all.sh` and `run_topology.sh` export a throwaway `ADMIN_API_KEY` so the
+admin endpoint can be exercised on a loopback-only proxy.
 Runtime output, including NIXL BUFFER telemetry required by NIXL v1.3, is
 stored in the ignored `logs/` directory.

@@ -22,6 +22,10 @@ DECODE_PIDS=()
     exit 2
 }
 
+# Exercised by smoke_test.sh against the admin endpoint. Never a real secret:
+# the proxy only binds to loopback for the duration of this check.
+export ADMIN_API_KEY="${ADMIN_API_KEY:-xpyd-example-admin-key}"
+
 cleanup() {
     local pid
     for pid in "${DECODE_PIDS[@]-}" "${PREFILL_PIDS[@]-}" "${PROXY_PID}"; do
@@ -176,6 +180,33 @@ run_smoke_test() {
         bash "${SCRIPT_DIR}/smoke_test.sh"
 }
 
+assert_health_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/health"
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /health HTTP ${expected}, got ${actual}." >&2
+        curl --silent "${PROXY_ENDPOINT}/health" >&2 || true
+        return 1
+    }
+}
+
+assert_passthrough_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/tokenize" \
+            -H "Content-Type: application/json" \
+            -d '{"model": "facebook/opt-125m", "prompt": "offline check"}'
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /tokenize HTTP ${expected}, got ${actual}." >&2
+        return 1
+    }
+}
+
 trap cleanup EXIT INT TERM
 
 mkdir -p "${LOG_DIR}"
@@ -198,12 +229,15 @@ for ((index = 0; index < DECODE_COUNT; index++)); do
     wait_for_instance_status decode "127.0.0.1:$((8200 + index))" unhealthy
 done
 assert_inference_status 503
+assert_passthrough_status 503
+assert_health_status 503
 
 phase "Phase 2: all prefill nodes online with decode nodes offline"
 for ((index = 0; index < PREFILL_COUNT; index++)); do
     start_node prefill "${index}"
 done
 assert_inference_status 503
+assert_passthrough_status 503
 
 phase "Phase 3: all nodes online and NIXL TCP inference"
 for ((index = 0; index < DECODE_COUNT; index++)); do

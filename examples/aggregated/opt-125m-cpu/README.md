@@ -37,3 +37,8 @@ catches a proxy that fails to select a backend.
 
 `run_all.sh` exports a throwaway `ADMIN_API_KEY` so the admin endpoint can be
 exercised; the proxy only listens on loopback for the duration of the check.
+
+The endpoint assertions live in `../../lib/proxy_api_smoke.sh` so the
+disaggregated NIXL example checks the same API surface. They are written to be
+topology agnostic, which lets the shared checks also run while part of the
+deployment is offline.

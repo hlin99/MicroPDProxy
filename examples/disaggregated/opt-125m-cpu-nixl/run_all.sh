@@ -9,6 +9,10 @@ PROXY_PID=""
 PREFILL_PID=""
 DECODE_PID=""
 
+# Exercised by smoke_test.sh against the admin endpoint. Never a real secret:
+# the proxy only binds to loopback for the duration of this check.
+export ADMIN_API_KEY="${ADMIN_API_KEY:-xpyd-example-admin-key}"
+
 cleanup() {
     for pid in "${DECODE_PID}" "${PREFILL_PID}" "${PROXY_PID}"; do
         if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
@@ -140,6 +144,33 @@ stop_decode() {
     wait_for_instance_status decode 127.0.0.1:8200 unhealthy
 }
 
+assert_health_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/health"
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /health HTTP ${expected}, got ${actual}." >&2
+        curl --silent "${PROXY_ENDPOINT}/health" >&2 || true
+        return 1
+    }
+}
+
+assert_passthrough_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/tokenize" \
+            -H "Content-Type: application/json" \
+            -d '{"model": "facebook/opt-125m", "prompt": "offline check"}'
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /tokenize HTTP ${expected}, got ${actual}." >&2
+        return 1
+    }
+}
+
 trap cleanup EXIT INT TERM
 
 mkdir -p "${LOG_DIR}"
@@ -154,10 +185,13 @@ wait_for_url "${PROXY_ENDPOINT}/status/instances" "${PROXY_PID}"
 wait_for_instance_status prefill 127.0.0.1:8100 unhealthy
 wait_for_instance_status decode 127.0.0.1:8200 unhealthy
 assert_inference_status 503
+assert_passthrough_status 503
+assert_health_status 503
 
 phase "Phase 2: prefill-only partial topology"
 start_prefill
 assert_inference_status 503
+assert_passthrough_status 503
 
 phase "Phase 3: decode discovery and NIXL TCP inference"
 start_decode

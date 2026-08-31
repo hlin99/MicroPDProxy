@@ -2,8 +2,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
+MODEL="facebook/opt-125m"
 REQUEST_COUNT="${REQUEST_COUNT:-1}"
+
+# shellcheck source=../../lib/proxy_api_smoke.sh
+source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 
 for ((request_index = 1; request_index <= REQUEST_COUNT; request_index++)); do
     completion="$(
@@ -69,5 +74,7 @@ if expected_prefill or expected_decode:
     assert expected_prefill <= selected_prefill, (expected_prefill, selected_prefill)
     assert expected_decode <= selected_decode, (expected_decode, selected_decode)
 PY
+
+smoke_all_endpoints
 
 echo "OPT-125M NIXL TCP ${TOPOLOGY_NAME:-1P1D} smoke test passed."
