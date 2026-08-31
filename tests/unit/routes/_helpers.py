@@ -109,6 +109,7 @@ def make_proxy(
         aggregated_instances=dict(aggregated or {}),
         registry=registry,
     )
+    proxy._healthy_instances = MethodType(Proxy._healthy_instances, proxy)
     proxy.auxiliary_instances = MethodType(Proxy.auxiliary_instances, proxy)
     proxy.post_to_instance = MethodType(Proxy.post_to_instance, proxy)
     proxy.get_from_instance = MethodType(Proxy.get_from_instance, proxy)

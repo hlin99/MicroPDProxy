@@ -662,6 +662,19 @@ class Proxy:
             if decode_instance:
                 self.registry.record_failure(decode_instance)
 
+    def _healthy_instances(self) -> set[str]:
+        """Return every instance the registry currently considers usable.
+
+        Single-instance probes such as ``/version`` must not be answered from a
+        node that is known to be down while healthy nodes are available.
+        """
+        if self.registry is None:
+            return set()
+        healthy: set[str] = set()
+        for role in ("prefill", "decode", "aggregated"):
+            healthy.update(self.registry.get_available_instances(role))
+        return healthy
+
     async def get_from_instance(
         self, path: str, is_full_instancelist: int = 0
     ) -> JSONResponse:
@@ -678,7 +691,9 @@ class Proxy:
             return error_response("No instances available", SERVER_ERROR, 500)
 
         if is_full_instancelist == 0:
-            instances = instances[:1]
+            healthy = self._healthy_instances()
+            preferred = [inst for inst in instances if inst in healthy]
+            instances = (preferred or instances)[:1]
 
         results = {}
         async with aiohttp.ClientSession() as session:

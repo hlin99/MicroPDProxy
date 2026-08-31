@@ -4,6 +4,7 @@
 # Standard
 import asyncio
 import json
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -142,6 +143,38 @@ def test_single_instance_mode_probes_only_the_first_node() -> None:
     )
 
     assert session.urls == ["http://127.0.0.1:8100/version"]
+
+
+def test_single_instance_mode_skips_a_known_dead_node() -> None:
+    """A downed first node must not make ``/version`` answer 503."""
+    registry = SimpleNamespace(
+        get_available_instances=lambda role, model="": (
+            ["127.0.0.1:8200"] if role == "decode" else []
+        )
+    )
+    proxy = make_proxy(
+        prefill=["127.0.0.1:8100"], decode=["127.0.0.1:8200"], registry=registry
+    )
+
+    response, session = _fetch(
+        proxy, "/version", 0, lambda *_a: FakeResponse(200, {"version": "1"})
+    )
+
+    assert session.urls == ["http://127.0.0.1:8200/version"]
+    assert response.status_code == 200
+
+
+def test_single_instance_mode_falls_back_when_nothing_is_healthy() -> None:
+    """With every node down the probe still reports the failure honestly."""
+    registry = SimpleNamespace(get_available_instances=lambda role, model="": [])
+    proxy = make_proxy(prefill=["127.0.0.1:8100"], registry=registry)
+
+    response, session = _fetch(
+        proxy, "/version", 0, lambda *_a: FakeResponse(500, {"error": "down"})
+    )
+
+    assert session.urls == ["http://127.0.0.1:8100/version"]
+    assert response.status_code == 503
 
 
 def test_empty_cluster_reports_an_error() -> None:
