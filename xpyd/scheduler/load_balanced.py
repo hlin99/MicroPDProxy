@@ -50,6 +50,30 @@ class LoadBalancedScheduler(SchedulingPolicy):
         logger.info("Decode instance model lens: %s", self.decode_model_len)
         super().__init__(registry=registry)
 
+    def add_instance_state(self, role: str, max_model_len: int) -> None:
+        """Extend load-tracking arrays after a runtime instance is appended."""
+        with self.lock:
+            if role == "prefill":
+                self.prefill_utils_counter.append(0)
+                self.prefill_bs_counter.append(0)
+                self.prefill_model_len.append(max_model_len)
+            else:
+                self.decode_kv_utils_counter.append(0)
+                self.decode_bs_counter.append(0)
+                self.decode_model_len.append(max_model_len)
+
+    def remove_instance_state(self, role: str, index: int) -> None:
+        """Remove load-tracking entries before a runtime instance is deleted."""
+        with self.lock:
+            if role == "prefill":
+                del self.prefill_utils_counter[index]
+                del self.prefill_bs_counter[index]
+                del self.prefill_model_len[index]
+            else:
+                del self.decode_kv_utils_counter[index]
+                del self.decode_bs_counter[index]
+                del self.decode_model_len[index]
+
     def schedule(
         self,
         cycler: itertools.cycle,

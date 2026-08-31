@@ -584,6 +584,12 @@ class Proxy:
 
             if role == "aggregated":
                 instances = self.aggregated_instances.get(info.model, [])
+                policy = self._aggregated_policies.get(info.model)
+                if isinstance(
+                    policy,
+                    (ConsistentHashPolicy, CacheAwarePolicy, PowerOfTwoPolicy),
+                ):
+                    policy.remove_worker(address)
                 if address in instances:
                     instances.remove(address)
                 if not instances:
@@ -594,9 +600,10 @@ class Proxy:
                     if role == "prefill"
                     else self.decode_instances
                 )
+                index = instances.index(address)
+                Proxy._remove_instance_from_policy(self, role, address, index)
                 with self.scheduling_policy.lock:
-                    if address in instances:
-                        instances.remove(address)
+                    instances.remove(address)
                     if role == "prefill":
                         self.prefill_cycler = itertools.cycle(self.prefill_instances)
                     else:
@@ -607,6 +614,106 @@ class Proxy:
             if self.discovery is not None:
                 self.discovery.remove_instance(role, address)
             self.registry.remove(address)
+
+    def _add_instance_to_policy(
+        self, role: str, address: str, max_model_len: int
+    ) -> None:
+        policy = self.scheduling_policy
+        if isinstance(policy, LoadBalancedScheduler):
+            policy.add_instance_state(role, max_model_len)
+        elif isinstance(
+            policy,
+            (ConsistentHashPolicy, CacheAwarePolicy, PowerOfTwoPolicy),
+        ):
+            policy.add_worker(address)
+
+    def _remove_instance_from_policy(self, role: str, address: str, index: int) -> None:
+        policy = self.scheduling_policy
+        if isinstance(policy, LoadBalancedScheduler):
+            policy.remove_instance_state(role, index)
+        elif isinstance(
+            policy,
+            (ConsistentHashPolicy, CacheAwarePolicy, PowerOfTwoPolicy),
+        ):
+            policy.remove_worker(address)
+
+    async def add_instance(self, role: str, address: str) -> bool:
+        """Validate and atomically register a runtime backend instance."""
+        if self.registry is None:
+            raise RuntimeError("Instance registry is unavailable.")
+        details = await Proxy._validated_instance_details(self, address)
+        if details is None:
+            return False
+        model, max_model_len = details
+
+        async with self._instance_mutation_lock:
+            try:
+                self.registry.get_instance_info(address)
+            except KeyError:
+                pass
+            else:
+                raise ValueError("Instance already exists")
+
+            if role == "aggregated":
+                instances = self.aggregated_instances.setdefault(model, [])
+            else:
+                instances = (
+                    self.prefill_instances
+                    if role == "prefill"
+                    else self.decode_instances
+                )
+            self.registry.add(role, address, model=model)
+            self.registry.mark_healthy(address)
+            index = len(instances)
+            policy_added = False
+            try:
+                if role == "aggregated":
+                    policy = self._aggregated_policies.get(model)
+                    if isinstance(
+                        policy,
+                        (ConsistentHashPolicy, CacheAwarePolicy, PowerOfTwoPolicy),
+                    ):
+                        policy.add_worker(address)
+                        policy_added = True
+                else:
+                    Proxy._add_instance_to_policy(self, role, address, max_model_len)
+                    policy_added = True
+                if role == "aggregated":
+                    instances.append(address)
+                else:
+                    with self.scheduling_policy.lock:
+                        instances.append(address)
+                        if role == "prefill":
+                            self.prefill_cycler = itertools.cycle(
+                                self.prefill_instances
+                            )
+                        else:
+                            self.decode_cycler = itertools.cycle(self.decode_instances)
+                if self.health_monitor is not None:
+                    self.health_monitor.add_node(address)
+                if self.discovery is not None:
+                    self.discovery.add_instance(role, address)
+            except Exception:
+                if self.discovery is not None:
+                    self.discovery.remove_instance(role, address)
+                if self.health_monitor is not None:
+                    self.health_monitor.remove_node(address)
+                if address in instances:
+                    instances.remove(address)
+                if role == "prefill":
+                    self.prefill_cycler = itertools.cycle(self.prefill_instances)
+                elif role == "decode":
+                    self.decode_cycler = itertools.cycle(self.decode_instances)
+                if policy_added:
+                    if role == "aggregated":
+                        policy.remove_worker(address)
+                    else:
+                        Proxy._remove_instance_from_policy(self, role, address, index)
+                if role == "aggregated" and not instances:
+                    self.aggregated_instances.pop(model, None)
+                self.registry.remove(address)
+                raise
+        return True
 
     def get_total_token_length(self, prompt: Any, model: str = "") -> int:
         """Compute total token length — delegates to
@@ -848,8 +955,10 @@ class Proxy:
                 f"Failed to forward request to {url}", SERVER_ERROR, 500
             )
 
-    async def validate_instance(self, instance: str) -> bool:
-        """Validate that an instance is reachable and serves the correct model."""
+    async def _validated_instance_details(
+        self, instance: str
+    ) -> Optional[tuple[str, int]]:
+        """Return model metadata when a candidate is valid for this proxy."""
         url = f"http://{instance}/v1/models"
         try:
             async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as client:
@@ -868,7 +977,10 @@ class Proxy:
                                 )
                             if model_cur in expected_models:
                                 logger.info("Instance: %s could be added.", instance)
-                                return True
+                                max_model_len = data["data"][0].get(
+                                    "max_model_len", 131072
+                                )
+                                return model_cur, int(max_model_len)
                             else:
                                 logger.warning(
                                     "Mismatch model %s: %s not in %s",
@@ -876,17 +988,21 @@ class Proxy:
                                     model_cur,
                                     sorted(expected_models),
                                 )
-                                return False
+                                return None
                         else:
-                            return False
+                            return None
                     else:
-                        return False
+                        return None
         except aiohttp.ClientError as e:
             logger.error(str(e))
-            return False
+            return None
         except Exception as e:
             logger.error(str(e))
-            return False
+            return None
+
+    async def validate_instance(self, instance: str) -> bool:
+        """Validate that an instance is reachable and serves a known model."""
+        return await Proxy._validated_instance_details(self, instance) is not None
 
 
 def _create_scheduling_policy(

@@ -180,7 +180,7 @@ Prometheus text exposition of the proxy metrics.
 
 ### POST `/instances/add`
 
-Dynamically register a prefill or decode instance. The instance is validated
+Dynamically register a prefill, decode, or aggregated instance. The instance is validated
 (`GET /v1/models` must answer with the model the proxy serves) before it joins
 the scheduling rotation.
 
@@ -192,9 +192,11 @@ the scheduling rotation.
 }
 ```
 
-`type` must be `prefill` or `decode`. `instance` must be `host:port` where host is
-a literal IPv4 address or `localhost`, and port is in `1-65535`. IPv6 addresses
-are not supported.
+`type` must be `prefill`, `decode`, or `aggregated`. `instance` must be
+`host:port` where host is a literal IPv4 address or `localhost`, and port is in
+`1-65535`. IPv6 addresses are not supported. A successful registration updates
+the registry, health monitor, discovery state, role pool, and active scheduling
+policy before returning.
 
 **Response (`200`):**
 ```json

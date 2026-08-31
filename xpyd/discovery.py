@@ -122,6 +122,21 @@ class NodeDiscovery:
                 self.aggregated_instances.remove(address)
             self.healthy_aggregated.discard(address)
 
+    def add_instance(self, role: str, address: str) -> None:
+        """Track a validated runtime instance as immediately healthy."""
+        if role == "prefill":
+            if address not in self.prefill_instances:
+                self.prefill_instances.append(address)
+            self.healthy_prefill.add(address)
+        elif role == "decode":
+            if address not in self.decode_instances:
+                self.decode_instances.append(address)
+            self.healthy_decode.add(address)
+        else:
+            if address not in self.aggregated_instances:
+                self.aggregated_instances.append(address)
+            self.healthy_aggregated.add(address)
+
     async def _probe_loop(self):
         """Periodically probe all nodes."""
         start_time = time.monotonic()
