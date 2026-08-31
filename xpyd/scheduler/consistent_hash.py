@@ -47,7 +47,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
     def _hash(key: str, index: int) -> int:
         """Compute a deterministic hash for a virtual node."""
         data = f"{key}#{index}".encode()
-        return int(hashlib.md5(data, usedforsecurity=False).hexdigest(), 16)
+        return int(hashlib.sha256(data).hexdigest(), 16)
 
     def _add_worker_unlocked(self, addr: str) -> None:
         if addr in self._workers:
@@ -117,10 +117,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys:
                 return None
-            # Non-security use: MD5 spreads keys uniformly across the hash ring;
-            # usedforsecurity=False marks it as non-cryptographic. Not sensitive data.
-            # codeql[py/weak-sensitive-data-hashing]
-            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)
+            h = int(hashlib.sha256(key.encode()).hexdigest(), 16)
             idx = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             return self._ring_map[self._ring_keys[idx]]
 
@@ -150,10 +147,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys or not candidates:
                 return None
-            # Non-security use: MD5 spreads keys uniformly across the hash ring;
-            # usedforsecurity=False marks it as non-cryptographic. Not sensitive data.
-            # codeql[py/weak-sensitive-data-hashing]
-            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)
+            h = int(hashlib.sha256(key.encode()).hexdigest(), 16)
             start = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             n = len(self._ring_keys)
             for i in range(n):
