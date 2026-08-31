@@ -117,7 +117,9 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys:
                 return None
-            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)
+            # Non-security use: MD5 spreads keys uniformly across the hash ring;
+            # usedforsecurity=False marks it as non-cryptographic. Not sensitive data.
+            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)  # lgtm[py/weak-sensitive-data-hashing]
             idx = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             return self._ring_map[self._ring_keys[idx]]
 
@@ -147,7 +149,9 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys or not candidates:
                 return None
-            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)
+            # Non-security use: MD5 spreads keys uniformly across the hash ring;
+            # usedforsecurity=False marks it as non-cryptographic. Not sensitive data.
+            h = int(hashlib.md5(key.encode(), usedforsecurity=False).hexdigest(), 16)  # lgtm[py/weak-sensitive-data-hashing]
             start = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             n = len(self._ring_keys)
             for i in range(n):
