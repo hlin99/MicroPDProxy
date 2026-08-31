@@ -58,7 +58,8 @@ xpyd proxy --config ./xpyd.yaml
 |---|---|
 | `--config, -c <FILE>` | YAML config path |
 | `--validate-config <FILE>` | Validate config and exit |
-| `--init-config [PATH]` | Generate config and exit (default path `./xpyd.yaml`) |
+| `--init-config [PATH]` | Generate config and exit (default path `./xpyd.yaml`; refuses to overwrite) |
+| `--force` | Allow `--init-config` to overwrite an existing file |
 | `--port <INT>` | Override `port` from YAML |
 | `--log-level <LEVEL>` | Override log level (`debug|info|warning|error`) |
 | `--disaggregated-mode <MODE>` | Override mode (`direct|nixl|zmq`) |

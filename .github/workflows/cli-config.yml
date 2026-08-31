@@ -1,0 +1,46 @@
+name: CLI and config matrix
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: cli-config-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+      - name: Reject unsupported Python
+        if: matrix.python-version == '3.9'
+        run: |
+          if python -m pip install dist/*.whl >install.log 2>&1; then
+            echo "Expected Python 3.9 installation to be rejected" >&2
+            exit 1
+          fi
+          grep -E -q "Requires-Python|requires a different Python" install.log
+      - name: Run installed CLI matrix
+        if: matrix.python-version != '3.9'
+        run: |
+          python -m pip install dist/*.whl
+          bash tests/cli/run_matrix.sh

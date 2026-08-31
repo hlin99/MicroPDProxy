@@ -1321,6 +1321,17 @@ class ProxyServer:
 _VERSION = "1.6.0"
 
 
+def _valid_port(value: str) -> int:
+    """Parse a TCP port for argparse with a concise user-facing error."""
+    try:
+        port = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("port must be an integer") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
 def _build_parser():
     """Build the subcommand argument parser for the proxy CLI."""
     parser = argparse.ArgumentParser(
@@ -1365,14 +1376,19 @@ def _build_parser():
         "(default path: ./xpyd.yaml)",
     )
     proxy_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite an existing --init-config destination",
+    )
+    proxy_parser.add_argument(
         "--port",
-        type=int,
+        type=_valid_port,
         default=None,
         help="Override the port from config",
     )
     proxy_parser.add_argument(
         "--log-level",
-        type=str,
+        choices=("debug", "info", "warning", "error"),
         default=None,
         dest="log_level",
         help="Override log level: debug|info|warning|error",
@@ -1476,6 +1492,27 @@ def _print_config_summary(config: ProxyConfig) -> None:
     print(f"  log_level: {config.log_level}")
 
 
+def _apply_cli_overrides(config: ProxyConfig, args) -> ProxyConfig:
+    """Apply explicitly supplied CLI values and revalidate the result."""
+    overrides = {
+        field: value
+        for field in (
+            "port",
+            "log_level",
+            "disaggregated_mode",
+            "first_token_source",
+        )
+        if (value := getattr(args, field, None)) is not None
+    }
+    if not overrides:
+        return config
+
+    model_schedulers = config._model_schedulers.copy()
+    updated = ProxyConfig.model_validate({**config.model_dump(), **overrides})
+    updated._model_schedulers = model_schedulers
+    return updated
+
+
 def main() -> None:
     """Entry point for the ``xpyd`` CLI."""
     from xpyd.init_config import generate_config
@@ -1494,9 +1531,20 @@ def main() -> None:
             )
         )
     elif args.command == "proxy":
+        if args.force and args.init_config is None:
+            parser.error("--force can only be used with --init-config")
+
         # --init-config: generate template and exit
         if args.init_config is not None:
-            generate_config(args.init_config)
+            output_path = Path(args.init_config)
+            if output_path.exists() and not args.force:
+                parser.error(
+                    f"config already exists: {output_path}; use --force to overwrite"
+                )
+            try:
+                generate_config(args.init_config)
+            except OSError as exc:
+                parser.exit(1, f"xpyd: failed to write config: {exc}\n")
             return
 
         # --validate-config: validate and exit
@@ -1521,21 +1569,11 @@ def main() -> None:
             )
             generate_config(config_path)
             return
-        config = ProxyConfig.from_yaml(config_path)
-
-        # Apply CLI overrides
-        if args.port is not None:
-            config = config.model_copy(update={"port": args.port})
-        if args.log_level is not None:
-            config = config.model_copy(update={"log_level": args.log_level})
-        if args.disaggregated_mode is not None:
-            config = config.model_copy(
-                update={"disaggregated_mode": args.disaggregated_mode}
-            )
-        if args.first_token_source is not None:
-            config = config.model_copy(
-                update={"first_token_source": args.first_token_source}
-            )
+        try:
+            config = ProxyConfig.from_yaml(config_path)
+            config = _apply_cli_overrides(config, args)
+        except (OSError, ValueError) as exc:
+            parser.exit(1, f"xpyd: failed to load config: {exc}\n")
 
         proxy_server = ProxyServer(config=config)
         proxy_server.run_server()
