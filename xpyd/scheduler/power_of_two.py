@@ -142,18 +142,12 @@ class PowerOfTwoPolicy(SchedulingPolicy):
         """
         if self._registry is not None:
             role = "prefill" if is_prompt else "decode"
-            available = self._registry.get_available_instances(role, model=model)
-            with self.lock:
-                self._workers = list(available)
-                # Sync load from registry where possible
-                for w in self._workers:
-                    if w not in self._load:
-                        self._load[w] = 0
-                # Remove stale entries
-                current = set(self._workers)
-                for w in list(self._load):
-                    if w not in current:
-                        del self._load[w]
+            available = set(self._registry.get_available_instances(role, model=model))
+            loads = {
+                worker: self._registry.get_active_requests(worker)
+                for worker in available
+            }
+            return self.select_from(available, loads=loads)
 
         return self.select()
 
