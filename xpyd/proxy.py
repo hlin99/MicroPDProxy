@@ -704,7 +704,33 @@ class Proxy:
                     }
                     logger.warning("Failed to fetch %s from %s: %s", path, inst, e)
 
-        return JSONResponse(content=results, status_code=200)
+        reachable = any(
+            "error" not in result and result["status"] < 500
+            for result in results.values()
+        )
+        return JSONResponse(content=results, status_code=200 if reachable else 503)
+
+    def auxiliary_instances(self, model: str = "") -> list[str]:
+        """Return instances able to serve auxiliary (non-generation) endpoints.
+
+        Prefill nodes hold the full model in disaggregated topologies, while
+        aggregated deployments have no prefill role at all.  Fall through every
+        role instead of assuming a prefill node is always present.
+        """
+        if self.registry is not None:
+            for role in ("prefill", "aggregated", "decode"):
+                instances = self.registry.get_available_instances(role, model=model)
+                if instances:
+                    return list(instances)
+            if model:
+                return []
+
+        aggregated = [
+            instance
+            for model_instances in self.aggregated_instances.values()
+            for instance in model_instances
+        ]
+        return list(self.prefill_instances or aggregated or self.decode_instances)
 
     async def post_to_instance(
         self, request: Request, path: str, json_template: dict
@@ -726,7 +752,13 @@ class Proxy:
         payload = json_template.copy()
         payload.update(body)
 
-        url = f"http://{self.prefill_instances[0]}{path}"
+        instances = self.auxiliary_instances(str(body.get("model") or ""))
+        if not instances:
+            return error_response(
+                "No available instance can handle the request", PROXY_ERROR, 503
+            )
+
+        url = f"http://{instances[0]}{path}"
         try:
             async with (
                 aiohttp.ClientSession() as session,

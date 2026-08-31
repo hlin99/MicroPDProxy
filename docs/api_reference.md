@@ -5,9 +5,10 @@ by the proxy process (default port `8868`).
 
 ## Authentication
 
-Most endpoints are open. Admin endpoints (`/instances/add`, `/instances/remove`)
-require an API key passed via the `X-API-Key` header. Set the key with the
-`ADMIN_API_KEY` environment variable.
+Most endpoints are open. The admin endpoint (`/instances/add`) requires an API
+key passed via the `X-API-Key` header. Set the key with the `ADMIN_API_KEY`
+environment variable. When `ADMIN_API_KEY` is unset the endpoint rejects every
+request with `500`; a wrong key returns `403` and a missing header `422`.
 
 ---
 
@@ -97,6 +98,8 @@ Text completion. OpenAI-compatible.
 
 List available models. Aggregated from backend instances.
 
+List every model registered across the backend instances.
+
 **Response:**
 ```json
 {
@@ -105,7 +108,8 @@ List available models. Aggregated from backend instances.
     {
       "id": "DeepSeek-R1",
       "object": "model",
-      "max_model_len": 65536
+      "created": 0,
+      "owned_by": "system"
     }
   ]
 }
@@ -122,10 +126,10 @@ Proxy status: lists prefill and decode node addresses and counts.
 **Response:**
 ```json
 {
-  "prefill_instances": ["10.0.0.1:8100", "10.0.0.2:8100"],
-  "decode_instances": ["10.0.0.3:8200", "10.0.0.4:8200"],
-  "prefill_count": 2,
-  "decode_count": 2
+  "prefill_node_count": 2,
+  "decode_node_count": 2,
+  "prefill_nodes": ["10.0.0.1:8100", "10.0.0.2:8100"],
+  "decode_nodes": ["10.0.0.3:8200", "10.0.0.4:8200"]
 }
 ```
 
@@ -135,29 +139,39 @@ Proxy status: lists prefill and decode node addresses and counts.
 
 ### GET `/health`
 
-Health check across all backend nodes. Queries each node's `/health` endpoint.
+Health fan-out across every backend node. Each configured instance is queried on
+its own `/health` endpoint and the raw per-node result is returned.
 
-**Response:**
+**Response (`200`, at least one node reachable):**
 ```json
 {
-  "status": "healthy",
-  "prefill": {"10.0.0.1:8100": "ok", "10.0.0.2:8100": "ok"},
-  "decode": {"10.0.0.3:8200": "ok", "10.0.0.4:8200": "ok"}
+  "10.0.0.1:8100": {"status": 200, "type": "text", "data": "OK"},
+  "10.0.0.3:8200": {"status": 500, "error": "Failed to connect to instance"}
 }
 ```
+
+The proxy answers `503` when *no* node is reachable or every node returns `5xx`,
+and `500` when no instance is registered at all. Load balancers can therefore use
+this endpoint directly to take the proxy out of rotation.
 
 **Auth:** None required.
 
 ---
 
-### GET `/ping`
+### GET/POST `/ping`
 
-Simple liveness check for the proxy itself.
+Same fan-out as `/health`, using each node's `/ping` endpoint. Both verbs are
+accepted and share one handler.
 
-**Response:**
-```
-pong
-```
+**Auth:** None required.
+
+---
+
+### GET `/metrics`
+
+Prometheus text exposition of the proxy metrics.
+
+**Response:** `text/plain; version=0.0.4; charset=utf-8`
 
 **Auth:** None required.
 
@@ -165,83 +179,64 @@ pong
 
 ### POST `/instances/add`
 
-Dynamically add a prefill or decode instance.
+Dynamically register a prefill or decode instance. The instance is validated
+(`GET /v1/models` must answer with the model the proxy serves) before it joins
+the scheduling rotation.
 
 **Request:**
 ```json
 {
-  "instance_type": "prefill",
+  "type": "prefill",
   "instance": "10.0.0.5:8100"
 }
 ```
 
-**Response:**
+`type` must be `prefill` or `decode`. `instance` must be `host:port` where host is
+a literal IPv4 address or `localhost`, and port is in `1-65535`. IPv6 addresses
+are not supported.
+
+**Response (`200`):**
 ```json
 {
-  "status": "added",
-  "instance_type": "prefill",
-  "instance": "10.0.0.5:8100"
+  "message": "Added 10.0.0.5:8100 to prefill_instances."
 }
 ```
+
+**Errors:** `400` for an invalid type, address, port, duplicate instance or a
+failed validation handshake; `403` for a wrong API key; `422` when the
+`X-API-Key` header is absent; `500` when `ADMIN_API_KEY` is unset.
 
 **Auth:** Required. Pass `X-API-Key` header matching `ADMIN_API_KEY`.
 
 ---
 
-### POST `/instances/remove`
+### Passthrough endpoints
 
-Dynamically remove a prefill or decode instance.
+The following endpoints are forwarded verbatim to a single backend instance and
+their response is returned unchanged, including the backend status code. A
+healthy prefill node is preferred, falling back to aggregated and then decode
+nodes, so these endpoints work in every topology.
 
-**Request:**
+| Endpoint | Required fields |
+| --- | --- |
+| `POST /tokenize` | `model`, `prompt` |
+| `POST /detokenize` | `model`, `tokens` |
+| `POST /v1/embeddings` | `model`, `input` |
+| `POST /pooling` | `model`, `messages` |
+| `POST /score`, `POST /v1/score` | `model`, `text_1`, `text_2`, `predictions` |
+| `POST /rerank`, `POST /v1/rerank`, `POST /v2/rerank` | `model`, `query`, `documents` |
+| `POST /invocations` | `model`, `prompt` |
+
+A body missing any required field is rejected with `400` listing every missing
+field. When no backend instance can serve the request the proxy returns `503`.
+
+**Example:**
 ```json
 {
-  "instance_type": "decode",
-  "instance": "10.0.0.4:8200"
-}
-```
-
-**Response:**
-```json
-{
-  "status": "removed",
-  "instance_type": "decode",
-  "instance": "10.0.0.4:8200"
-}
-```
-
-**Auth:** Required. Pass `X-API-Key` header matching `ADMIN_API_KEY`.
-
----
-
-### POST `/tokenize`
-
-Tokenize text using the proxy's loaded tokenizer.
-
-**Request:**
-```json
-{
+  "model": "DeepSeek-R1",
   "prompt": "Hello world"
 }
 ```
-
-**Response:** Proxied to a backend instance.
-
-**Auth:** None required.
-
----
-
-### POST `/detokenize`
-
-Convert token IDs back to text.
-
-**Request:**
-```json
-{
-  "tokens": [9906, 1917]
-}
-```
-
-**Response:** Proxied to a backend instance.
 
 **Auth:** None required.
 
@@ -249,12 +244,12 @@ Convert token IDs back to text.
 
 ### GET `/version`
 
-Return proxy version information.
+Return the version reported by a single backend instance, keyed by address.
 
 **Response:**
 ```json
 {
-  "version": "0.1.0"
+  "10.0.0.1:8100": {"status": 200, "type": "json", "data": {"version": "0.11.0"}}
 }
 ```
 
