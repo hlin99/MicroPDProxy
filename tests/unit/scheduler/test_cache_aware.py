@@ -46,7 +46,7 @@ class TestConsistentHashRing:
         ring = ConsistentHashRing()
         for w in ["w1", "w2", "w3", "w4"]:
             ring.add_worker(w)
-        keys = list(range(0, 10000, 7))
+        keys = [ConsistentHashRing._hash(f"key-{k}") for k in range(1000)]
         before = {k: ring.get(k) for k in keys}
         ring.add_worker("w5")
         after = {k: ring.get(k) for k in keys}
@@ -59,7 +59,7 @@ class TestConsistentHashRing:
         ring = ConsistentHashRing()
         for w in ["w1", "w2", "w3", "w4"]:
             ring.add_worker(w)
-        keys = list(range(0, 10000, 7))
+        keys = [ConsistentHashRing._hash(f"key-{k}") for k in range(1000)]
         before = {k: ring.get(k) for k in keys}
         ring.remove_worker("w3")
         after = {k: ring.get(k) for k in keys}
@@ -105,7 +105,7 @@ class TestConsistentHashRing:
         # Use hashed keys spread across the ring
         selected = set()
         for k in range(500):
-            h = int(hashlib.md5(f"key-{k}".encode()).hexdigest(), 16)  # noqa: S324
+            h = int(hashlib.sha256(f"key-{k}".encode()).hexdigest(), 16)
             selected.add(ring.get(h))
         assert len(selected) > 1
 

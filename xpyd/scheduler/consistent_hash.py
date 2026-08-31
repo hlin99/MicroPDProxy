@@ -47,7 +47,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
     def _hash(key: str, index: int) -> int:
         """Compute a deterministic hash for a virtual node."""
         data = f"{key}#{index}".encode()
-        return int(hashlib.md5(data).hexdigest(), 16)  # noqa: S324
+        return int(hashlib.sha256(data).hexdigest(), 16)
 
     def _add_worker_unlocked(self, addr: str) -> None:
         if addr in self._workers:
@@ -117,7 +117,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys:
                 return None
-            h = int(hashlib.md5(key.encode()).hexdigest(), 16)  # noqa: S324
+            h = int(hashlib.sha256(key.encode()).hexdigest(), 16)
             idx = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             return self._ring_map[self._ring_keys[idx]]
 
@@ -147,7 +147,7 @@ class ConsistentHashPolicy(SchedulingPolicy):
         with self.lock:
             if not self._ring_keys or not candidates:
                 return None
-            h = int(hashlib.md5(key.encode()).hexdigest(), 16)  # noqa: S324
+            h = int(hashlib.sha256(key.encode()).hexdigest(), 16)
             start = bisect_right(self._ring_keys, h) % len(self._ring_keys)
             n = len(self._ring_keys)
             for i in range(n):
