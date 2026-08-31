@@ -12,6 +12,7 @@ from xpyd.config import ProxyConfig
 from xpyd.proxy import (
     Proxy,
     ProxyServer,
+    _apply_cli_overrides,
     _build_parser,
     _normalize_cli_args,
     _print_config_summary,
@@ -142,6 +143,11 @@ class TestSubcommandParser:
         parser = _build_parser()
         args = parser.parse_args(["proxy", "--init-config", "/tmp/out.yaml"])
         assert args.init_config == "/tmp/out.yaml"
+
+    def test_init_config_force(self):
+        parser = _build_parser()
+        args = parser.parse_args(["proxy", "--init-config", "/tmp/out.yaml", "--force"])
+        assert args.force is True
 
     def test_init_config_interactive(self, tmp_path):
         from xpyd.init_config import generate_interactive_config
@@ -412,10 +418,31 @@ class TestSubcommandParser:
         args = parser.parse_args(["proxy", "-c", "x.yaml", "--port", "9000"])
         assert args.port == 9000
 
-    def test_log_level_override(self):
+    @pytest.mark.parametrize("level", ["debug", "info", "warning", "error"])
+    def test_log_level_override(self, level):
         parser = _build_parser()
-        args = parser.parse_args(["proxy", "-c", "x.yaml", "--log-level", "debug"])
-        assert args.log_level == "debug"
+        args = parser.parse_args(["proxy", "-c", "x.yaml", "--log-level", level])
+        assert args.log_level == level
+
+    @pytest.mark.parametrize("port", ["0", "-1", "65536", "not-a-number"])
+    def test_invalid_port_rejected(self, port):
+        parser = _build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["proxy", "--port", port])
+        assert exc_info.value.code == 2
+
+    def test_invalid_log_level_rejected(self):
+        parser = _build_parser()
+        with pytest.raises(SystemExit) as exc_info:
+            parser.parse_args(["proxy", "--log-level", "trace"])
+        assert exc_info.value.code == 2
+
+    def test_force_without_init_config_rejected(self, monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["xpyd", "--force"])
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2
+        assert "--force can only be used" in capsys.readouterr().err
 
     def test_disaggregated_mode_override(self):
         parser = _build_parser()
@@ -472,6 +499,14 @@ class TestSubcommandParser:
 
 
 class TestConfigResolution:
+    def test_cli_config_wins_over_environment_and_default(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "xpyd.yaml").write_text("model: default\n")
+        parser = _build_parser()
+        args = parser.parse_args(["proxy", "--config", "cli.yaml"])
+        with patch.dict(os.environ, {"XPYD_CONFIG": "env.yaml"}):
+            assert _resolve_config_path(args) == "cli.yaml"
+
     def test_cli_config_wins(self):
         parser = _build_parser()
         args = parser.parse_args(["proxy", "--config", "cli.yaml"])
@@ -496,3 +531,198 @@ class TestConfigResolution:
             "No config specified; found ./xpyd.yaml and using it."
             in capsys.readouterr().out
         )
+
+
+class TestCliOverrides:
+    @pytest.mark.parametrize(
+        ("argument", "value", "field", "expected"),
+        [
+            ("--port", "8000", "port", 8000),
+            ("--log-level", "error", "log_level", "error"),
+            (
+                "--disaggregated-mode",
+                "nixl",
+                "disaggregated_mode",
+                "nixl",
+            ),
+            (
+                "--first-token-source",
+                "prefill",
+                "first_token_source",
+                "prefill",
+            ),
+        ],
+    )
+    def test_explicit_cli_value_overrides_yaml_default(
+        self, argument, value, field, expected
+    ):
+        config = ProxyConfig(
+            model="m",
+            prefill=["127.0.0.1:8001"],
+            decode=["127.0.0.1:8002"],
+            port=9000,
+            log_level="debug",
+        )
+        args = _build_parser().parse_args(["proxy", argument, value])
+
+        updated = _apply_cli_overrides(config, args)
+
+        assert getattr(updated, field) == expected
+
+    def test_overrides_preserve_per_model_schedulers(self):
+        config = ProxyConfig(
+            models=[
+                {
+                    "name": "m",
+                    "aggregated": ["127.0.0.1:8001"],
+                    "scheduler": "roundrobin",
+                }
+            ]
+        )
+        args = _build_parser().parse_args(["proxy", "--port", "9000"])
+
+        updated = _apply_cli_overrides(config, args)
+
+        assert updated.port == 9000
+        assert updated._model_schedulers == {"m": "roundrobin"}
+
+    def test_invalid_combination_is_revalidated(self):
+        config = ProxyConfig(
+            model="m",
+            prefill=["127.0.0.1:8001"],
+            decode=["127.0.0.1:8002"],
+        )
+        args = _build_parser().parse_args(["proxy", "--disaggregated-mode", "zmq"])
+
+        with pytest.raises(ValueError, match="requires a zmq configuration"):
+            _apply_cli_overrides(config, args)
+
+
+class TestCliMain:
+    def test_cli_values_override_yaml_before_server_start(self, tmp_path, monkeypatch):
+        config = tmp_path / "xpyd.yaml"
+        config.write_text(
+            "model: m\n"
+            "prefill:\n"
+            "  - 127.0.0.1:8001\n"
+            "decode:\n"
+            "  - 127.0.0.1:8002\n"
+            "port: 9000\n"
+            "log_level: debug\n"
+            "disaggregated_mode: direct\n"
+            "first_token_source: decode\n"
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "xpyd",
+                "--config",
+                str(config),
+                "--port",
+                "8000",
+                "--log-level",
+                "error",
+                "--disaggregated-mode",
+                "nixl",
+                "--first-token-source",
+                "prefill",
+            ],
+        )
+
+        with patch("xpyd.proxy.ProxyServer") as server_class:
+            main()
+
+        effective = server_class.call_args.kwargs["config"]
+        assert effective.port == 8000
+        assert effective.log_level == "error"
+        assert effective.disaggregated_mode == "nixl"
+        assert effective.first_token_source == "prefill"
+        server_class.return_value.run_server.assert_called_once_with()
+
+    def test_init_config_refuses_to_overwrite(self, tmp_path, monkeypatch, capsys):
+        config = tmp_path / "xpyd.yaml"
+        config.write_text("keep: me\n")
+        monkeypatch.setattr(
+            "sys.argv",
+            ["xpyd", "--init-config", str(config)],
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 2
+        assert config.read_text() == "keep: me\n"
+        assert "--force to overwrite" in capsys.readouterr().err
+
+    def test_init_config_force_overwrites(self, tmp_path, monkeypatch):
+        config = tmp_path / "xpyd.yaml"
+        config.write_text("old: content\n")
+        monkeypatch.setattr(
+            "sys.argv",
+            ["xpyd", "--init-config", str(config), "--force"],
+        )
+
+        with patch("xpyd.init_config._use_interactive_mode", return_value=False):
+            main()
+
+        assert "Generated by" not in config.read_text()
+        assert "instances:" in config.read_text()
+
+    def test_init_config_write_failure_is_concise(self, tmp_path, monkeypatch, capsys):
+        output = tmp_path / "xpyd.yaml"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["xpyd", "--init-config", str(output)],
+        )
+
+        with (
+            patch(
+                "xpyd.init_config.generate_config",
+                side_effect=PermissionError("permission denied"),
+            ),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main()
+
+        assert exc_info.value.code == 1
+        assert "failed to write config: permission denied" in capsys.readouterr().err
+
+    def test_missing_startup_config_is_concise(self, tmp_path, monkeypatch, capsys):
+        missing = tmp_path / "missing.yaml"
+        monkeypatch.setattr("sys.argv", ["xpyd", "--config", str(missing)])
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        error = capsys.readouterr().err
+        assert "failed to load config" in error
+        assert str(missing) in error
+
+    def test_invalid_cli_override_combination_is_concise(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        config = tmp_path / "xpyd.yaml"
+        config.write_text(
+            "model: m\n"
+            "prefill:\n"
+            "  - 127.0.0.1:8001\n"
+            "decode:\n"
+            "  - 127.0.0.1:8002\n"
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "xpyd",
+                "--config",
+                str(config),
+                "--disaggregated-mode",
+                "zmq",
+            ],
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        assert "requires a zmq configuration" in capsys.readouterr().err

@@ -1,7 +1,4 @@
-# CLI Reference *(planned)*
-
-> **Status:** CLI packaging is in progress (Task 8). This document describes
-> the planned interface.
+# CLI Reference
 
 ## Installation
 
@@ -38,7 +35,8 @@ requests.
 | `--help` | Show help message and exit. |
 | `--version` | Show version number and exit. |
 | `--validate-config FILE` | Validate a YAML config file without starting the server. Exits with code 0 if valid, non-zero with error details if invalid. |
-| `--init-config [PATH]` | Generate a YAML config and exit. Offers an interactive wizard, defaulting to the documented template after 5 seconds. Defaults to `./xpyd.yaml`. |
+| `--init-config [PATH]` | Generate a YAML config and exit. Offers an interactive wizard, defaulting to the documented template after 5 seconds. Defaults to `./xpyd.yaml` and refuses to overwrite an existing file. |
+| `--force` | Allow `--init-config` to overwrite an existing destination. |
 | `XPYD_CONFIG` | Environment variable alternative to `--config`. |
 
 The proxy configuration is YAML-only. Legacy arguments such as `--model`,
