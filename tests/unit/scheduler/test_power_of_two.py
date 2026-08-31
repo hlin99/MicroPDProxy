@@ -2,6 +2,7 @@
 """Tests for Power of Two Choices scheduling policy."""
 
 from collections import Counter
+from unittest.mock import patch
 
 from xpyd.scheduler.power_of_two import PowerOfTwoPolicy
 
@@ -133,6 +134,43 @@ class TestScheduleInterface:
 
         cycler = itertools.cycle([])
         assert policy.schedule(cycler) is None
+
+    def test_registry_load_is_role_aware(self):
+        import itertools
+
+        from xpyd.registry import InstanceRegistry
+
+        registry = InstanceRegistry()
+        for role, address in (
+            ("prefill", "p1"),
+            ("prefill", "p2"),
+            ("decode", "d1"),
+            ("decode", "d2"),
+        ):
+            registry.add(role, address, model="model")
+            registry.mark_healthy(address)
+        registry.increment_active_requests("p1")
+        registry.increment_active_requests("d1")
+        policy = PowerOfTwoPolicy(
+            workers=["p1", "p2", "d1", "d2"],
+            registry=registry,
+        )
+
+        with patch("xpyd.scheduler.power_of_two.random.sample") as sample:
+            sample.side_effect = lambda workers, _: sorted(workers)
+            prefill = policy.schedule(
+                itertools.cycle(["p1", "p2"]),
+                is_prompt=True,
+                model="model",
+            )
+            decode = policy.schedule(
+                itertools.cycle(["d1", "d2"]),
+                is_prompt=False,
+                model="model",
+            )
+
+        assert prefill == "p2"
+        assert decode == "d2"
 
 
 class TestLoadAutoIncrement:

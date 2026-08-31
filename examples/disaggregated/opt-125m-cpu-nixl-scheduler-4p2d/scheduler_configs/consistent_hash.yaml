@@ -1,0 +1,14 @@
+tokenizer_path: /tmp/tokenizers
+instances:
+  - {address: "127.0.0.1:8100", role: prefill, model: facebook/opt-125m}
+  - {address: "127.0.0.1:8101", role: prefill, model: facebook/opt-125m}
+  - {address: "127.0.0.1:8102", role: prefill, model: facebook/opt-125m}
+  - {address: "127.0.0.1:8103", role: prefill, model: facebook/opt-125m}
+  - {address: "127.0.0.1:8200", role: decode, model: facebook/opt-125m}
+  - {address: "127.0.0.1:8201", role: decode, model: facebook/opt-125m}
+disaggregated_mode: nixl
+scheduling: consistent_hash
+consistent_hash: {virtual_nodes: 160}
+port: 8868
+startup: {probe_interval_seconds: 1, heartbeat_interval_seconds: 10}
+health_check: {enabled: true, interval_seconds: 1, timeout_seconds: 1}
