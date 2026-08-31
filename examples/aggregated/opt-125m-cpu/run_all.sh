@@ -254,7 +254,7 @@ assert_inference_status 200
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 smoke_admin_success aggregated localhost:8000
 MODEL=facebook/opt-125m \
-    smoke_admin_remove_draining aggregated 127.0.0.1:8000 200
+    smoke_admin_remove_draining aggregated "" 200
 
 grep -q "Node heartbeat | mode=aggregated | aggregated=0/1 online" \
     "${LOG_DIR}/proxy.log"
