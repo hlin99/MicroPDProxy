@@ -38,41 +38,7 @@ assert output["choices"][0]["finish_reason"] == "length", output
 assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 
-chat_result="$(
-    curl --silent --show-error --write-out $'\n%{http_code}' \
-        "${PROXY_ENDPOINT}/v1/chat/completions" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"model\": \"${MODEL}\",
-            \"messages\": [{\"role\": \"user\", \"content\": \"Say hello\"}],
-            \"max_tokens\": 4,
-            \"temperature\": 0
-        }"
-)"
-chat="${chat_result%$'\n'*}"
-chat_status="${chat_result##*$'\n'}"
-if [[ "${chat_status}" != "200" ]]; then
-    echo "ERROR: chat completion returned HTTP ${chat_status}: ${chat}" >&2
-    exit 1
-fi
-
-python -c '
-import json
-import sys
-
-output = json.load(sys.stdin)
-assert output["object"] == "chat.completion", output
-assert output["model"] == "facebook/opt-125m", output
-assert isinstance(output["id"], str) and output["id"], output
-assert isinstance(output["created"], int), output
-assert len(output["choices"]) == 1, output
-choice = output["choices"][0]
-assert choice["index"] == 0, output
-assert choice["message"]["role"] == "assistant", output
-assert choice["message"]["content"], output
-assert choice["finish_reason"] == "length", output
-assert output["usage"]["completion_tokens"] == 4, output["usage"]
-' <<<"${chat}"
+smoke_chat_completion
 
 stream="$(
     curl --fail --silent --show-error --no-buffer \

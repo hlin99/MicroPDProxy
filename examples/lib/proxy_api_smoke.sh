@@ -43,6 +43,45 @@ assert_forwarded() {
     echo "  ${label} forwarded (HTTP ${actual})"
 }
 
+smoke_chat_completion() {
+    echo "=== Chat completion endpoint ==="
+
+    local result body status
+    result="$(
+        curl --silent --show-error --write-out $'\n%{http_code}' \
+            "${PROXY_ENDPOINT}/v1/chat/completions" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"model\": \"${MODEL}\",
+                \"messages\": [{\"role\": \"user\", \"content\": \"Say hello\"}],
+                \"max_tokens\": 4,
+                \"temperature\": 0
+            }"
+    )"
+    body="${result%$'\n'*}"
+    status="${result##*$'\n'}"
+    assert_status "/v1/chat/completions" 200 "${status}"
+
+    python -c '
+import json
+import sys
+
+output = json.load(sys.stdin)
+assert output["object"] == "chat.completion", output
+assert output["model"] == "facebook/opt-125m", output
+assert isinstance(output["id"], str) and output["id"], output
+assert isinstance(output["created"], int), output
+assert len(output["choices"]) == 1, output
+choice = output["choices"][0]
+assert choice["index"] == 0, output
+assert choice["message"]["role"] == "assistant", output
+assert choice["message"]["content"], output
+assert choice["finish_reason"] == "length", output
+assert output["usage"]["completion_tokens"] == 4, output["usage"]
+' <<<"${body}"
+    echo "  /v1/chat/completions ok"
+}
+
 smoke_informational_endpoints() {
     echo "=== Informational endpoints ==="
 
@@ -200,6 +239,20 @@ smoke_passthrough_validation() {
     echo "  all 10 passthrough endpoints validate their body and answer OPTIONS"
 }
 
+smoke_options_endpoints() {
+    echo "=== OPTIONS endpoints ==="
+
+    local path
+    for path in /status /health /ping /v1/models /version \
+        /v1/completions /v1/chat/completions; do
+        assert_status "OPTIONS ${path}" 200 "$(
+            curl --silent --output /dev/null --write-out "%{http_code}" \
+                --request OPTIONS "${PROXY_ENDPOINT}${path}"
+        )"
+    done
+    echo "  all registered non-passthrough OPTIONS endpoints ok"
+}
+
 admin_post() {
     curl --silent --output /dev/null --write-out "%{http_code}" \
         "${PROXY_ENDPOINT}/instances/add" \
@@ -258,9 +311,50 @@ smoke_admin_endpoint() {
     echo "  rejected admin calls left the instance pools untouched"
 }
 
+smoke_admin_success() {
+    local role=$1 instance=$2 before after result body status
+    echo "=== Admin endpoint success path ==="
+
+    before="$(curl --fail --silent --show-error "${PROXY_ENDPOINT}/status")"
+    result="$(
+        curl --silent --show-error --write-out $'\n%{http_code}' \
+            "${PROXY_ENDPOINT}/instances/add" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${ADMIN_API_KEY}" \
+            -d "{\"type\": \"${role}\", \"instance\": \"${instance}\"}"
+    )"
+    body="${result%$'\n'*}"
+    status="${result##*$'\n'}"
+    if ! assert_status "/instances/add success path" 200 "${status}"; then
+        echo "response: ${body}" >&2
+        return 1
+    fi
+    after="$(curl --fail --silent --show-error "${PROXY_ENDPOINT}/status")"
+
+    BEFORE="${before}" AFTER="${after}" ROLE="${role}" INSTANCE="${instance}" \
+        BODY="${body}" python - <<'PY'
+import json
+import os
+
+before = json.loads(os.environ["BEFORE"])
+after = json.loads(os.environ["AFTER"])
+role = os.environ["ROLE"]
+instance = os.environ["INSTANCE"]
+body = json.loads(os.environ["BODY"])
+nodes_key = f"{role}_nodes"
+count_key = f"{role}_node_count"
+assert instance not in before[nodes_key], before
+assert instance in after[nodes_key], after
+assert after[count_key] == before[count_key] + 1, (before, after)
+assert body == {"message": f"Added {instance} to {role}_instances."}, body
+PY
+    echo "  added ${instance} to the ${role} pool"
+}
+
 smoke_all_endpoints() {
     smoke_informational_endpoints
     smoke_passthrough_endpoints
     smoke_passthrough_validation
+    smoke_options_endpoints
     smoke_admin_endpoint
 }

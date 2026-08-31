@@ -36,6 +36,8 @@ assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 done
 
+smoke_chat_completion
+
 models="$(
     curl --fail --silent --show-error "${PROXY_ENDPOINT}/v1/models"
 )"

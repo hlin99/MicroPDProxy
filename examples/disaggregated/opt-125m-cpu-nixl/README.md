@@ -43,10 +43,13 @@ metrics to ensure round-robin requests exercised every configured node.
 
 Every lifecycle also runs the shared endpoint checks from
 `../../lib/proxy_api_smoke.sh`, the same suite the aggregated CPU example uses:
-`/ping` on both verbs, `/version`, `/status`, `/status/instances`, the ten
-passthrough endpoints with their request validation and `OPTIONS` handling, and
-the admin endpoint's rejection paths. This is what proves passthrough requests
-reach a backend in disaggregated mode rather than failing to select one.
+both completion APIs, `/ping` on both verbs, `/version`, `/status`,
+`/status/instances`, the ten passthrough endpoints with their request
+validation, every registered `OPTIONS` route, and the admin endpoint's
+rejection paths. Each lifecycle finishes by adding a healthy backend alias
+through `/instances/add` and checking the resulting role membership and count.
+This is what proves passthrough requests reach a backend in disaggregated mode
+rather than failing to select one.
 OPT-125M is a generative model, so the pooling and scoring families are answered
 with a 4xx by vLLM itself; the checks assert those requests are *forwarded* (any
 non-5xx status) instead of asserting a payload. While the topology is

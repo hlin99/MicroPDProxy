@@ -210,6 +210,8 @@ stop_decode
 assert_inference_status 503
 start_decode
 bash "${SCRIPT_DIR}/smoke_test.sh"
+source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
+smoke_admin_success decode 127.0.0.1:8100
 
 wait_for_log \
     "Node heartbeat | mode=disaggregated | P=0/1 online | D=0/1 online"

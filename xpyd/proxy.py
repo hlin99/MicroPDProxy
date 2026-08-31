@@ -801,15 +801,22 @@ class Proxy:
                         data = await response.json()
                         if "data" in data and len(data["data"]) > 0:
                             model_cur = data["data"][0].get("id", "")
-                            if model_cur == self.model:
+                            expected_models = {self.model} if self.model else set()
+                            if self.registry is not None:
+                                expected_models.update(
+                                    info.model
+                                    for info in self.registry.get_all_instances()
+                                    if info.model
+                                )
+                            if model_cur in expected_models:
                                 logger.info("Instance: %s could be added.", instance)
                                 return True
                             else:
                                 logger.warning(
-                                    "Mismatch model %s : %s != %s",
+                                    "Mismatch model %s: %s not in %s",
                                     instance,
                                     model_cur,
-                                    self.model,
+                                    sorted(expected_models),
                                 )
                                 return False
                         else:

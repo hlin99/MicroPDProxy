@@ -41,4 +41,7 @@ exercised; the proxy only listens on loopback for the duration of the check.
 The endpoint assertions live in `../../lib/proxy_api_smoke.sh` so the
 disaggregated NIXL example checks the same API surface. They are written to be
 topology agnostic, which lets the shared checks also run while part of the
-deployment is offline.
+deployment is offline. The lifecycle finishes by adding a healthy backend
+alias through `/instances/add` and verifying the new role count and member,
+covering the admin endpoint's successful mutation path without affecting later
+traffic.
