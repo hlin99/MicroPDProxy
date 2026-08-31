@@ -37,7 +37,7 @@ class SchedulingPolicy(ABC):
     ) -> Optional[str]:
         raise NotImplementedError("Scheduling policy is not set.")
 
-    def schedule_completion(
+    def schedule_completion(  # noqa: B027 - optional hook, not abstract
         self,
         prefill_instance: Optional[str] = None,
         decode_instance: Optional[str] = None,

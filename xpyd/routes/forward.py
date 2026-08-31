@@ -9,34 +9,58 @@ def register(router: APIRouter, server) -> None:
     """Register proxy-forward routes on *router*."""
 
     async def post_tokenize(request: Request):
-        return await server.post_to_instance(request, "/tokenize", {"model": "", "prompt": ""})
+        return await server.post_to_instance(
+            request, "/tokenize", {"model": "", "prompt": ""}
+        )
 
     async def post_detokenize(request: Request):
-        return await server.post_to_instance(request, "/detokenize", {"model": "", "tokens": []})
+        return await server.post_to_instance(
+            request, "/detokenize", {"model": "", "tokens": []}
+        )
 
     async def post_embeddings(request: Request):
-        return await server.post_to_instance(request, "/v1/embeddings", {"model": "", "input": ""})
+        return await server.post_to_instance(
+            request, "/v1/embeddings", {"model": "", "input": ""}
+        )
 
     async def post_pooling(request: Request):
-        return await server.post_to_instance(request, "/pooling", {"model": "", "messages": ""})
+        return await server.post_to_instance(
+            request, "/pooling", {"model": "", "messages": ""}
+        )
 
     async def post_score(request: Request):
-        return await server.post_to_instance(request, "/score", {"model": "", "text_1": "", "text_2": "", "predictions": ""})
+        return await server.post_to_instance(
+            request,
+            "/score",
+            {"model": "", "text_1": "", "text_2": "", "predictions": ""},
+        )
 
     async def post_scorev1(request: Request):
-        return await server.post_to_instance(request, "/v1/score", {"model": "", "text_1": "", "text_2": "", "predictions": ""})
+        return await server.post_to_instance(
+            request,
+            "/v1/score",
+            {"model": "", "text_1": "", "text_2": "", "predictions": ""},
+        )
 
     async def post_rerank(request: Request):
-        return await server.post_to_instance(request, "/rerank", {"model": "", "query": "", "documents": ""})
+        return await server.post_to_instance(
+            request, "/rerank", {"model": "", "query": "", "documents": ""}
+        )
 
     async def post_rerankv1(request: Request):
-        return await server.post_to_instance(request, "/v1/rerank", {"model": "", "query": "", "documents": ""})
+        return await server.post_to_instance(
+            request, "/v1/rerank", {"model": "", "query": "", "documents": ""}
+        )
 
     async def post_rerankv2(request: Request):
-        return await server.post_to_instance(request, "/v2/rerank", {"model": "", "query": "", "documents": ""})
+        return await server.post_to_instance(
+            request, "/v2/rerank", {"model": "", "query": "", "documents": ""}
+        )
 
     async def post_invocations(request: Request):
-        return await server.post_to_instance(request, "/invocations", {"model": "", "prompt": ""})
+        return await server.post_to_instance(
+            request, "/invocations", {"model": "", "prompt": ""}
+        )
 
     router.post("/tokenize", response_class=JSONResponse)(post_tokenize)
     router.post("/detokenize", response_class=JSONResponse)(post_detokenize)

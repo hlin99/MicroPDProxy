@@ -33,11 +33,10 @@ class PolicyRegistry:
             TypeError: If *policy_cls* is not a subclass of
                 :class:`SchedulingPolicy`.
         """
-        if not (isinstance(policy_cls, type)
-                and issubclass(policy_cls, SchedulingPolicy)):
-            raise TypeError(
-                f"{policy_cls!r} is not a subclass of SchedulingPolicy"
-            )
+        if not (
+            isinstance(policy_cls, type) and issubclass(policy_cls, SchedulingPolicy)
+        ):
+            raise TypeError(f"{policy_cls!r} is not a subclass of SchedulingPolicy")
         if name in self._policies:
             logger.warning(
                 "Overwriting existing policy %r (%s) with %s",

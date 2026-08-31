@@ -43,8 +43,7 @@ def get_total_token_length(tokenizer, prompt):
         if all(isinstance(p, str) for p in prompt):
             return sum(len(tokenizer(p)["input_ids"]) for p in prompt)
         if all(
-            isinstance(p, list) and all(isinstance(x, int) for x in p)
-            for p in prompt
+            isinstance(p, list) and all(isinstance(x, int) for x in p) for p in prompt
         ):
             # Nested list of ints — multiple already-tokenized sequences
             return sum(len(p) for p in prompt)

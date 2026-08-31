@@ -4,6 +4,14 @@ on:
     branches: [main]
   push:
     branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -17,18 +25,31 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
-      - run: python -m pytest tests/unit/ -v --tb=short --timeout=120
+      - run: >-
+          python -m pytest tests/unit/ -v --tb=short --timeout=120
+          --cov=xpyd --cov-report=term-missing --cov-report=xml
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install -e ".[dev]" ruff isort
+      # Pinned to the revisions in .pre-commit-config.yaml so the two gates
+      # cannot disagree; bump both together.
+      - run: pip install -e ".[dev]" ruff isort==5.13.2 black==24.10.0
       - run: ruff check .
-      - run: isort --check-only --diff --skip xpyd .
+      - run: isort --check-only --diff .
+      - run: black --check --diff xpyd
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -80,4 +101,5 @@ jobs:
           xpyd --validate-config "$tmpdir/fixable.yaml"
           xpyd proxy fix-config "$tmpdir/fixable.yaml"
           test "$(find "$tmpdir" -name '*.bak' -type f | wc -l)" -eq 1
-      - run: pip install pytest pytest-asyncio && python -m pytest tests/unit/ -v --tb=short
+      - name: Validate example configurations
+        run: bash tests/validate_example_configs.sh

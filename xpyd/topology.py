@@ -71,9 +71,7 @@ def expand_topology(
         try:
             base_port = int(port_str)
         except ValueError as exc:
-            raise ValueError(
-                f"{role} invalid port in node {entry}: {exc}"
-            ) from exc
+            raise ValueError(f"{role} invalid port in node {entry}: {exc}") from exc
         parsed.append((ip, base_port))
 
     node_instance_counts: Dict[int, int] = {}

@@ -83,9 +83,7 @@ class PowerOfTwoPolicy(SchedulingPolicy):
                 return None
             if len(self._workers) == 1:
                 self._last_pair = (self._workers[0],)
-                self._load[self._workers[0]] = (
-                    self._load.get(self._workers[0], 0) + 1
-                )
+                self._load[self._workers[0]] = self._load.get(self._workers[0], 0) + 1
                 return self._workers[0]
 
             pair = random.sample(self._workers, 2)

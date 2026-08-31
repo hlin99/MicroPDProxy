@@ -32,6 +32,8 @@ dev = [
     "isort>=5.13.0",
     "tiktoken>=0.7.0",
     "pytest-timeout>=2.3.0",
+    "pytest-cov>=5.0.0",
+    "black==24.10.0",
 ]
 
 [project.scripts]
@@ -61,3 +63,7 @@ exclude_dirs = ["tests", "benchmarks", "examples", "bot"]
 # B615: the tokenizer source is operator-supplied, so a pinned revision
 # cannot be hardcoded here.
 skips = ["B101", "B104", "B105", "B107", "B311", "B615"]
+
+[tool.isort]
+profile = "black"
+line_length = 88

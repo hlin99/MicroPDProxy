@@ -31,7 +31,9 @@ class ZmqNotificationListener:
         self._socket = self._context.socket(zmq.PULL)
         self._socket.bind(self.endpoint)
         self._task = asyncio.create_task(self._receive())
-        logger.info("ZMQ notification listener started", extra={"endpoint": self.endpoint})
+        logger.info(
+            "ZMQ notification listener started", extra={"endpoint": self.endpoint}
+        )
 
     async def stop(self) -> None:
         if self._task is not None:

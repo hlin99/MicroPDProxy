@@ -88,7 +88,10 @@ def _fuzzy_match_role(value: str) -> Optional[str]:
     if len(lowered) < _MIN_FUZZY_LEN:
         return None
     matches = difflib.get_close_matches(
-        lowered, _VALID_ROLES, n=1, cutoff=0.6,
+        lowered,
+        _VALID_ROLES,
+        n=1,
+        cutoff=0.6,
     )
     if matches:
         return matches[0]
@@ -179,12 +182,14 @@ class ConfigFixer:
         if isinstance(model, str) and model != model.strip():
             old = model
             self._data["model"] = model.strip()
-            self._report.fixes.append(FixResult(
-                path="model",
-                old_value=repr(old),
-                new_value=repr(self._data["model"]),
-                description="model name whitespace trimmed",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path="model",
+                    old_value=repr(old),
+                    new_value=repr(self._data["model"]),
+                    description="model name whitespace trimmed",
+                )
+            )
 
     def _fix_legacy_addresses(self, key: str) -> None:
         """Fix addresses in legacy prefill/decode lists."""
@@ -205,23 +210,27 @@ class ConfigFixer:
         stripped = _strip_address(addr)
         if stripped != addr:
             lst[idx] = stripped
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(stripped),
-                description="extra whitespace trimmed",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(stripped),
+                    description="extra whitespace trimmed",
+                )
+            )
             addr = stripped
 
         port_fixed = _add_default_port(addr)
         if port_fixed is not None:
             lst[idx] = port_fixed
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(port_fixed),
-                description="default port added",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(port_fixed),
+                    description="default port added",
+                )
+            )
 
     def _fix_scheduling(self) -> None:
         """Fix top-level scheduling value."""
@@ -231,23 +240,27 @@ class ConfigFixer:
         stripped = sched.strip()
         if stripped != sched:
             self._data["scheduling"] = stripped
-            self._report.fixes.append(FixResult(
-                path="scheduling",
-                old_value=repr(sched),
-                new_value=repr(stripped),
-                description="extra whitespace trimmed",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path="scheduling",
+                    old_value=repr(sched),
+                    new_value=repr(stripped),
+                    description="extra whitespace trimmed",
+                )
+            )
             sched = stripped
 
         fixed = _fuzzy_match_scheduler(sched)
         if fixed is not None:
             self._data["scheduling"] = fixed
-            self._report.fixes.append(FixResult(
-                path="scheduling",
-                old_value=repr(sched),
-                new_value=repr(fixed),
-                description="scheduler typo corrected",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path="scheduling",
+                    old_value=repr(sched),
+                    new_value=repr(fixed),
+                    description="scheduler typo corrected",
+                )
+            )
 
     def _fix_instances(self) -> None:
         """Fix entries in the 'instances' list."""
@@ -263,22 +276,26 @@ class ConfigFixer:
                 stripped = role.strip()
                 if stripped != role:
                     entry["role"] = stripped
-                    self._report.fixes.append(FixResult(
-                        path=f"instances[{i}].role",
-                        old_value=repr(role),
-                        new_value=repr(stripped),
-                        description="extra whitespace trimmed",
-                    ))
+                    self._report.fixes.append(
+                        FixResult(
+                            path=f"instances[{i}].role",
+                            old_value=repr(role),
+                            new_value=repr(stripped),
+                            description="extra whitespace trimmed",
+                        )
+                    )
                     role = stripped
                 fixed_role = _fuzzy_match_role(role)
                 if fixed_role is not None:
                     entry["role"] = fixed_role
-                    self._report.fixes.append(FixResult(
-                        path=f"instances[{i}].role",
-                        old_value=repr(role),
-                        new_value=repr(fixed_role),
-                        description="role normalized",
-                    ))
+                    self._report.fixes.append(
+                        FixResult(
+                            path=f"instances[{i}].role",
+                            old_value=repr(role),
+                            new_value=repr(fixed_role),
+                            description="role normalized",
+                        )
+                    )
             # Fix address
             addr = entry.get("address")
             if isinstance(addr, str):
@@ -288,12 +305,14 @@ class ConfigFixer:
             if isinstance(model, str) and model != model.strip():
                 old = model
                 entry["model"] = model.strip()
-                self._report.fixes.append(FixResult(
-                    path=f"instances[{i}].model",
-                    old_value=repr(old),
-                    new_value=repr(entry["model"]),
-                    description="model name whitespace trimmed",
-                ))
+                self._report.fixes.append(
+                    FixResult(
+                        path=f"instances[{i}].model",
+                        old_value=repr(old),
+                        new_value=repr(entry["model"]),
+                        description="model name whitespace trimmed",
+                    )
+                )
 
     def _fix_instance_address(self, entry: dict, idx: int) -> None:
         """Fix address within an instance entry."""
@@ -302,22 +321,26 @@ class ConfigFixer:
         stripped = addr.strip()
         if stripped != addr:
             entry["address"] = stripped
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(stripped),
-                description="extra whitespace trimmed",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(stripped),
+                    description="extra whitespace trimmed",
+                )
+            )
             addr = stripped
         port_fixed = _add_default_port(addr)
         if port_fixed is not None:
             entry["address"] = port_fixed
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(port_fixed),
-                description="default port added",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(port_fixed),
+                    description="default port added",
+                )
+            )
 
     def _fix_models(self) -> None:
         """Fix entries in the 'models' shorthand list."""
@@ -332,12 +355,14 @@ class ConfigFixer:
             if isinstance(name, str) and name != name.strip():
                 old = name
                 entry["name"] = name.strip()
-                self._report.fixes.append(FixResult(
-                    path=f"models[{i}].name",
-                    old_value=repr(old),
-                    new_value=repr(entry["name"]),
-                    description="model name whitespace trimmed",
-                ))
+                self._report.fixes.append(
+                    FixResult(
+                        path=f"models[{i}].name",
+                        old_value=repr(old),
+                        new_value=repr(entry["name"]),
+                        description="model name whitespace trimmed",
+                    )
+                )
             # Fix addresses in prefill/decode/aggregated lists
             for role_key in ("prefill", "decode", "aggregated"):
                 addrs = entry.get(role_key)
@@ -354,47 +379,58 @@ class ConfigFixer:
                 stripped = sched.strip()
                 if stripped != sched:
                     entry["scheduler"] = stripped
-                    self._report.fixes.append(FixResult(
-                        path=f"models[{i}].scheduler",
-                        old_value=repr(sched),
-                        new_value=repr(stripped),
-                        description="extra whitespace trimmed",
-                    ))
+                    self._report.fixes.append(
+                        FixResult(
+                            path=f"models[{i}].scheduler",
+                            old_value=repr(sched),
+                            new_value=repr(stripped),
+                            description="extra whitespace trimmed",
+                        )
+                    )
                     sched = stripped
                 fixed = _fuzzy_match_scheduler(sched)
                 if fixed is not None:
                     entry["scheduler"] = fixed
-                    self._report.fixes.append(FixResult(
-                        path=f"models[{i}].scheduler",
-                        old_value=repr(sched),
-                        new_value=repr(fixed),
-                        description="scheduler typo corrected",
-                    ))
+                    self._report.fixes.append(
+                        FixResult(
+                            path=f"models[{i}].scheduler",
+                            old_value=repr(sched),
+                            new_value=repr(fixed),
+                            description="scheduler typo corrected",
+                        )
+                    )
 
     def _fix_models_address(
-        self, lst: list, idx: int, path: str,
+        self,
+        lst: list,
+        idx: int,
+        path: str,
     ) -> None:
         """Fix a single address in a models entry list."""
         addr = lst[idx]
         stripped = addr.strip()
         if stripped != addr:
             lst[idx] = stripped
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(stripped),
-                description="extra whitespace trimmed",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(stripped),
+                    description="extra whitespace trimmed",
+                )
+            )
             addr = stripped
         port_fixed = _add_default_port(addr)
         if port_fixed is not None:
             lst[idx] = port_fixed
-            self._report.fixes.append(FixResult(
-                path=path,
-                old_value=repr(addr),
-                new_value=repr(port_fixed),
-                description="default port added",
-            ))
+            self._report.fixes.append(
+                FixResult(
+                    path=path,
+                    old_value=repr(addr),
+                    new_value=repr(port_fixed),
+                    description="default port added",
+                )
+            )
 
     # -- suggest-only rules ------------------------------------------------
 
@@ -453,29 +489,35 @@ class ConfigFixer:
         """Warn when a model mixes aggregated and disaggregated instances."""
         for model, roles in self._collect_model_roles().items():
             has_aggregated = roles.get("aggregated", 0) > 0
-            has_disaggregated = roles.get("prefill", 0) > 0 or roles.get("decode", 0) > 0
+            has_disaggregated = (
+                roles.get("prefill", 0) > 0 or roles.get("decode", 0) > 0
+            )
             if has_aggregated and has_disaggregated:
-                self._report.suggestions.append(Suggestion(
-                    path=f"model '{model}'",
-                    message=(
-                        f"Model '{model}' has both aggregated and prefill/decode "
-                        f"instances. Consider converting all to aggregated or all "
-                        f"to prefill/decode."
-                    ),
-                ))
+                self._report.suggestions.append(
+                    Suggestion(
+                        path=f"model '{model}'",
+                        message=(
+                            f"Model '{model}' has both aggregated and prefill/decode "
+                            f"instances. Consider converting all to aggregated or all "
+                            f"to prefill/decode."
+                        ),
+                    )
+                )
 
     def _suggest_address_conflict(self) -> None:
         """Warn when the same address serves multiple models."""
         for addr, models in self._collect_addresses().items():
             unique_models = set(m for m in models if m)
             if len(unique_models) > 1:
-                self._report.suggestions.append(Suggestion(
-                    path=f"address '{addr}'",
-                    message=(
-                        f"Address '{addr}' is used by multiple models: "
-                        f"{sorted(unique_models)}. Possible conflict."
-                    ),
-                ))
+                self._report.suggestions.append(
+                    Suggestion(
+                        path=f"address '{addr}'",
+                        message=(
+                            f"Address '{addr}' is used by multiple models: "
+                            f"{sorted(unique_models)}. Possible conflict."
+                        ),
+                    )
+                )
 
     def _suggest_unbalanced_disaggregated(self) -> None:
         """Warn when prefill/decode ratio is heavily unbalanced."""
@@ -485,14 +527,16 @@ class ConfigFixer:
             if p > 0 and d > 0:
                 ratio = max(p, d) / min(p, d)
                 if ratio >= 4.0:
-                    self._report.suggestions.append(Suggestion(
-                        path=f"model '{model}'",
-                        message=(
-                            f"Model '{model}' has {p} prefill and {d} decode "
-                            f"instances (ratio {ratio:.1f}:1). Consider "
-                            f"rebalancing."
-                        ),
-                    ))
+                    self._report.suggestions.append(
+                        Suggestion(
+                            path=f"model '{model}'",
+                            message=(
+                                f"Model '{model}' has {p} prefill and {d} decode "
+                                f"instances (ratio {ratio:.1f}:1). Consider "
+                                f"rebalancing."
+                            ),
+                        )
+                    )
 
     def _suggest_missing_decode(self) -> None:
         """Warn when prefill is present but decode is missing."""
@@ -503,21 +547,25 @@ class ConfigFixer:
             if has_aggregated:
                 continue
             if p > 0 and d == 0:
-                self._report.suggestions.append(Suggestion(
-                    path=f"model '{model}'",
-                    message=(
-                        f"Model '{model}' has {p} prefill but no decode "
-                        f"instances. disaggregated mode requires both."
-                    ),
-                ))
+                self._report.suggestions.append(
+                    Suggestion(
+                        path=f"model '{model}'",
+                        message=(
+                            f"Model '{model}' has {p} prefill but no decode "
+                            f"instances. disaggregated mode requires both."
+                        ),
+                    )
+                )
             elif d > 0 and p == 0:
-                self._report.suggestions.append(Suggestion(
-                    path=f"model '{model}'",
-                    message=(
-                        f"Model '{model}' has {d} decode but no prefill "
-                        f"instances. disaggregated mode requires both."
-                    ),
-                ))
+                self._report.suggestions.append(
+                    Suggestion(
+                        path=f"model '{model}'",
+                        message=(
+                            f"Model '{model}' has {d} decode but no prefill "
+                            f"instances. disaggregated mode requires both."
+                        ),
+                    )
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -555,20 +603,25 @@ def run_fix_config(
     if report.fixes:
         print(f"\u2705 Fixed {len(report.fixes)} issue(s):")
         for fix in report.fixes:
-            print(f"  - {fix.path}: {fix.old_value} \u2192 {fix.new_value}"
-                  f" ({fix.description})")
+            print(
+                f"  - {fix.path}: {fix.old_value} \u2192 {fix.new_value}"
+                f" ({fix.description})"
+            )
     else:
         print("\u2705 No issues found.")
 
     # Handle suggestions
     # Note: Suggestions are informational — they describe semantic issues
     # that require human judgment (e.g. converting all instances to aggregated,
-    # rebalancing disaggregated serving ratios).  In --interactive mode, the user is asked
+    # rebalancing disaggregated serving ratios).  In --interactive mode, the user
+    # is asked
     # to acknowledge each suggestion; this does not auto-apply changes
     # because the correct resolution depends on the user's intent.
     if report.suggestions:
-        print(f"\n\u26a0\ufe0f  {len(report.suggestions)} issue(s) need "
-              f"your attention:")
+        print(
+            f"\n\u26a0\ufe0f  {len(report.suggestions)} issue(s) need "
+            f"your attention:"
+        )
         for sug in report.suggestions:
             print(f"  - {sug.path}: {sug.message}")
             if interactive:
@@ -578,8 +631,7 @@ def run_fix_config(
                     pass
 
     # Output
-    fixed_yaml = yaml.dump(fixer.fixed_data, default_flow_style=False,
-                           sort_keys=False)
+    fixed_yaml = yaml.dump(fixer.fixed_data, default_flow_style=False, sort_keys=False)
     if write:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = f"{config_path}.{timestamp}.bak"

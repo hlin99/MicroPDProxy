@@ -56,16 +56,22 @@ def validate_completion_request(request: dict, is_chat: bool) -> JSONResponse | 
     """Validate required fields. Returns JSONResponse on error, None on success."""
     if is_chat:
         if "messages" not in request:
-            return error_response("Missing required field: messages", INVALID_REQUEST, 400)
+            return error_response(
+                "Missing required field: messages", INVALID_REQUEST, 400
+            )
         if not isinstance(request["messages"], list):
             return error_response("Field messages must be a list", INVALID_REQUEST, 400)
     else:
         if "prompt" not in request:
-            return error_response("Missing required field: prompt", INVALID_REQUEST, 400)
+            return error_response(
+                "Missing required field: prompt", INVALID_REQUEST, 400
+            )
     return None
 
 
-def extract_prompt_info(request: dict, is_chat: bool, server: Proxy) -> tuple[int, int, str]:
+def extract_prompt_info(
+    request: dict, is_chat: bool, server: Proxy
+) -> tuple[int, int, str]:
     """Extract prompt metrics. Returns (total_length, max_tokens, prompt_text)."""
     model = request.get("model", "")
     if is_chat:
@@ -161,11 +167,7 @@ def tokenize_zmq_prompt(request: dict, is_chat: bool, server: Proxy) -> list[int
         )
     if not is_chat:
         prompt = request["prompt"]
-        return (
-            list(prompt)
-            if isinstance(prompt, list)
-            else tokenizer.encode(prompt)
-        )
+        return list(prompt) if isinstance(prompt, list) else tokenizer.encode(prompt)
 
     template_kwargs = dict(request.get("chat_template_kwargs") or {})
     template_kwargs["tokenize"] = True
@@ -179,9 +181,7 @@ def tokenize_zmq_prompt(request: dict, is_chat: bool, server: Proxy) -> list[int
         template_kwargs["chat_template"] = request["chat_template"]
     if request.get("tools") is not None:
         template_kwargs["tools"] = request["tools"]
-    tokenized = tokenizer.apply_chat_template(
-        request["messages"], **template_kwargs
-    )
+    tokenized = tokenizer.apply_chat_template(request["messages"], **template_kwargs)
     if isinstance(tokenized, Mapping):
         tokenized = tokenized.get("input_ids")
         if tokenized is None:
@@ -311,8 +311,8 @@ def _merge_prefill_token_usage(usage: dict) -> None:
     if usage.get("prompt_tokens", 0) > 0:
         usage["prompt_tokens"] -= 1
     usage["completion_tokens"] = usage.get("completion_tokens", 0) + 1
-    usage["total_tokens"] = (
-        usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0)
+    usage["total_tokens"] = usage.get("prompt_tokens", 0) + usage.get(
+        "completion_tokens", 0
     )
 
 
@@ -331,10 +331,7 @@ async def _zmq_stream_usage_generator(decode_generator):
                         output = json.loads(payload)
                         if isinstance(output.get("usage"), dict):
                             _merge_prefill_token_usage(output["usage"])
-                        line = (
-                            "data: "
-                            + json.dumps(output, separators=(",", ":"))
-                        )
+                        line = "data: " + json.dumps(output, separators=(",", ":"))
                 lines.append(line)
             yield ("\n".join(lines) + "\n\n").encode()
     if buffer.strip():
@@ -356,12 +353,14 @@ async def _zmq_stream_generator(
         "object": "text_completion",
         "created": prefill_output["created"],
         "model": prefill_output["model"],
-        "choices": [{
-            "index": 0,
-            "text": prefill_output["choices"][0]["text"],
-            "logprobs": None,
-            "finish_reason": None,
-        }],
+        "choices": [
+            {
+                "index": 0,
+                "text": prefill_output["choices"][0]["text"],
+                "logprobs": None,
+                "finish_reason": None,
+            }
+        ],
         "usage": None,
     }
     if is_chat:
@@ -409,8 +408,7 @@ async def _zmq_nonstream_generator(
             value += chunk
         output = json.loads(value)
         output["choices"][0]["text"] = (
-            prefill_output["choices"][0]["text"]
-            + output["choices"][0]["text"]
+            prefill_output["choices"][0]["text"] + output["choices"][0]["text"]
         )
         usage = output.get("usage")
         if isinstance(usage, dict):
@@ -452,40 +450,40 @@ async def _zmq_prefill_only_generator(
             "object": "text_completion",
             "created": output["created"],
             "model": output["model"],
-            "choices": [{
-                "index": choice.get("index", 0),
-                "text": choice.get("text", ""),
-                "logprobs": choice.get("logprobs"),
-                "finish_reason": None,
-            }],
+            "choices": [
+                {
+                    "index": choice.get("index", 0),
+                    "text": choice.get("text", ""),
+                    "logprobs": choice.get("logprobs"),
+                    "finish_reason": None,
+                }
+            ],
             "usage": None,
         }
         tail = {
             **head,
-            "choices": [{
-                "index": choice.get("index", 0),
-                "text": "",
-                "logprobs": None,
-                "finish_reason": choice.get("finish_reason") or "length",
-            }],
+            "choices": [
+                {
+                    "index": choice.get("index", 0),
+                    "text": "",
+                    "logprobs": None,
+                    "finish_reason": choice.get("finish_reason") or "length",
+                }
+            ],
         }
         if is_chat:
             head = _completion_chunk_to_chat(head)
             head["choices"][0]["delta"]["role"] = "assistant"
             tail = _completion_chunk_to_chat(tail)
         for chunk in (head, tail):
-            yield (
-                f"data: {json.dumps(chunk, separators=(',', ':'))}\n\n"
-            ).encode()
+            yield (f"data: {json.dumps(chunk, separators=(',', ':'))}\n\n").encode()
         if include_usage and isinstance(output.get("usage"), dict):
             usage = {
                 **tail,
                 "choices": [],
                 "usage": output["usage"],
             }
-            yield (
-                f"data: {json.dumps(usage, separators=(',', ':'))}\n\n"
-            ).encode()
+            yield (f"data: {json.dumps(usage, separators=(',', ':'))}\n\n").encode()
         yield b"data: [DONE]\n\n"
     finally:
         server.exception_handler(
@@ -495,7 +493,9 @@ async def _zmq_prefill_only_generator(
         )
 
 
-async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, is_chat: bool) -> JSONResponse | StreamingResponse:
+async def handle_completion(
+    endpoint: str, raw_request: Request, server: Proxy, is_chat: bool
+) -> JSONResponse | StreamingResponse:
     """Unified completion handler for both /v1/completions and /v1/chat/completions."""
     _metrics_start = track_request_start(endpoint)
     t_request_start = time.monotonic()
@@ -539,30 +539,32 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         # Aggregated-role fast path: single forward, no P→D split
         if server._is_aggregated_model(requested_model):
             return await _handle_aggregated_completion(
-                endpoint, request, raw_request, server,
-                requested_model, total_length, max_tokens, prompt_text,
-                _metrics_start, handler_name,
+                endpoint,
+                request,
+                raw_request,
+                server,
+                requested_model,
+                total_length,
+                max_tokens,
+                prompt_text,
+                _metrics_start,
+                handler_name,
             )
         zmq_prompt_tokens = None
         if server.disaggregated_mode == "zmq":
             if server.get_tokenizer(requested_model) is None:
-                zmq_prompt_tokens = await server.tokenize_on_backend(
-                    request, is_chat
-                )
+                zmq_prompt_tokens = await server.tokenize_on_backend(request, is_chat)
             else:
-                zmq_prompt_tokens = tokenize_zmq_prompt(
-                    request, is_chat, server
-                )
+                zmq_prompt_tokens = tokenize_zmq_prompt(request, is_chat, server)
             total_length = len(zmq_prompt_tokens)
         kv_prepare_request = build_kv_prepare_request(
-            request, is_chat, server.disaggregated_mode,
+            request,
+            is_chat,
+            server.disaggregated_mode,
         )
         upstream_headers = None
         if server.disaggregated_mode == "nixl":
-            request_id = (
-                raw_request.headers.get("x-request-id")
-                or str(uuid.uuid4())
-            )
+            request_id = raw_request.headers.get("x-request-id") or str(uuid.uuid4())
             upstream_headers = {"X-Request-Id": request_id}
 
         _session_id = (
@@ -574,9 +576,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             "header": raw_request.headers.get("x-session-id"),
             "session_id": _session_id,
             "user": request.get("user"),
-            "client_ip": (
-                raw_request.client.host if raw_request.client else None
-            ),
+            "client_ip": (raw_request.client.host if raw_request.client else None),
             "prompt": prompt_text,
             "model": request.get("model", ""),
         }
@@ -600,7 +600,11 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         if prefill_instance is None or decode_instance is None:
             logger.warning(
                 "No available instance",
-                extra={"endpoint": endpoint, "prompt_length": total_length, "model": requested_model},
+                extra={
+                    "endpoint": endpoint,
+                    "prompt_length": total_length,
+                    "model": requested_model,
+                },
             )
             track_request_end(endpoint, _metrics_start)
             # Check for unknown model first to return a clean 404 without
@@ -623,7 +627,9 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 error_type="no_available_instance",
                 model=model_label,
             ).inc()
-            return error_response("No available instance can handle the request", PROXY_ERROR, 503)
+            return error_response(
+                "No available instance can handle the request", PROXY_ERROR, 503
+            )
 
         zmq_request_id = None
         zmq_wait_for_notification = False
@@ -649,17 +655,20 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
 
         # Track per-instance request counters
         proxy_prefill_requests_total.labels(
-            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
             model=model_label,
         ).inc()
         proxy_decode_requests_total.labels(
-            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
             model=model_label,
         ).inc()
 
         # Track active prefill requests
         proxy_prefill_active_requests.labels(
-            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
             model=model_label,
         ).inc()
 
@@ -667,7 +676,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         try:
             async for chunk in server.forward_request(
                 f"http://{prefill_instance}"
-                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' else endpoint}",
+                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' else endpoint}",  # noqa: E501
                 kv_prepare_request,
                 extra_headers=upstream_headers,
             ):
@@ -678,11 +687,13 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             server.exception_handler(prefill_instance, decode_instance, total_length)
             server._record_failure(prefill_instance, decode_instance)
             proxy_instance_errors_total.labels(
-                instance=prefill_instance, error_type="prefill_forward_error",
+                instance=prefill_instance,
+                error_type="prefill_forward_error",
                 model=model_label,
             ).inc()
             proxy_prefill_active_requests.labels(
-                prefill_instance=prefill_instance, decode_instance=decode_instance,
+                prefill_instance=prefill_instance,
+                decode_instance=decode_instance,
                 model=model_label,
             ).dec()
             raise http_exc
@@ -690,11 +701,13 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
         t_prefill_done = time.monotonic()
         # Prefill complete — decrement active prefill, start active decode
         proxy_prefill_active_requests.labels(
-            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
             model=model_label,
         ).dec()
         proxy_decode_active_requests.labels(
-            prefill_instance=prefill_instance, decode_instance=decode_instance,
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
             model=model_label,
         ).inc()
 
@@ -730,8 +743,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     raise HTTPException(
                         status_code=502,
                         detail=(
-                            "Prefill response did not contain an LMCache "
-                            "first token"
+                            "Prefill response did not contain an LMCache " "first token"
                         ),
                     ) from exc
             receiver = server.zmq_config.receivers[decode_instance]
@@ -788,7 +800,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
             # surface only when wrapped_generator() iterates it.
             generator_d_raw = server.forward_request(
                 f"http://{decode_instance}"
-                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' and is_chat else endpoint}",
+                f"{'/v1/completions' if server.disaggregated_mode == 'zmq' and is_chat else endpoint}",  # noqa: E501
                 request,
                 extra_headers=upstream_headers,
             )
@@ -833,9 +845,11 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                 else:
                     generator_class = server.d_first_token_generator_class
                 # Determine if user's first token comes from prefill or decode node.
-                # P_first_token_generator yields P's token first; D_first_token_generator
+                # P_first_token_generator yields P's token first;
+                # D_first_token_generator
                 # discards P's token and yields D's tokens only.
                 from xpyd.proxy import P_first_token_generator
+
                 first_token_from_p = (
                     server.first_token_source == "prefill"
                     and generator_class is P_first_token_generator
@@ -849,9 +863,7 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     req_len=total_length,
                 )
         media_type = (
-            "text/event-stream"
-            if request.get("stream", False)
-            else "application/json"
+            "text/event-stream" if request.get("stream", False) else "application/json"
         )
 
         async def wrapped_generator():
@@ -864,17 +876,23 @@ async def handle_completion(endpoint: str, raw_request: Request, server: Proxy, 
                     handler_name,
                 )
             except HTTPException as http_exc:
-                server.exception_handler(prefill_instance, decode_instance, total_length)
+                server.exception_handler(
+                    prefill_instance, decode_instance, total_length
+                )
                 server._record_failure(prefill_instance, decode_instance)
                 proxy_instance_errors_total.labels(
-                    instance=decode_instance, error_type="decode_forward_error",
+                    instance=decode_instance,
+                    error_type="decode_forward_error",
                     model=model_label,
                 ).inc()
-                logger.error("[1] HTTPException in wrapped_generator: %s", str(http_exc.detail))
+                logger.error(
+                    "[1] HTTPException in wrapped_generator: %s", str(http_exc.detail)
+                )
                 raise
             except Exception as e:
                 proxy_instance_errors_total.labels(
-                    instance=decode_instance, error_type="decode_forward_error",
+                    instance=decode_instance,
+                    error_type="decode_forward_error",
                     model=model_label,
                 ).inc()
                 logger.error("[1] Exception in wrapped_generator: %s", str(e))
@@ -950,9 +968,7 @@ async def _handle_aggregated_completion(
         header=raw_request.headers.get("x-session-id"),
         session_id=request.get("session_id"),
         user=request.get("user"),
-        client_ip=(
-            raw_request.client.host if raw_request.client else None
-        ),
+        client_ip=(raw_request.client.host if raw_request.client else None),
         prompt=prompt_text,
     )
 
@@ -1043,7 +1059,8 @@ async def _handle_aggregated_completion(
             else:
                 status_code = 200
             server.schedule_aggregated_completion(
-                instance, req_len=total_length,
+                instance,
+                req_len=total_length,
             )
             if status_code < 400 and server.registry is not None:
                 server.registry.record_success(instance)
@@ -1053,24 +1070,30 @@ async def _handle_aggregated_completion(
             return JSONResponse(data, status_code=status_code)
         except HTTPException as http_exc:
             server.schedule_aggregated_completion(
-                instance, req_len=total_length,
+                instance,
+                req_len=total_length,
             )
             if server.registry is not None:
                 server.registry.record_failure(instance)
             track_request_end(endpoint, metrics_start)
             return error_response(
-                str(http_exc.detail), PROXY_ERROR, http_exc.status_code,
+                str(http_exc.detail),
+                PROXY_ERROR,
+                http_exc.status_code,
             )
         except Exception as e:
             logger.error("Error in aggregated non-streaming: %s", str(e))
             server.schedule_aggregated_completion(
-                instance, req_len=total_length,
+                instance,
+                req_len=total_length,
             )
             if server.registry is not None:
                 server.registry.record_failure(instance)
             track_request_end(endpoint, metrics_start)
             return error_response(
-                "Internal proxy error", PROXY_ERROR, 500,
+                "Internal proxy error",
+                PROXY_ERROR,
+                500,
             )
 
 
