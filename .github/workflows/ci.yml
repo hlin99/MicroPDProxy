@@ -41,7 +41,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
-      - run: pip install -e ".[dev]" ruff isort black
+      # Pinned to the revisions in .pre-commit-config.yaml so the two gates
+      # cannot disagree; bump both together.
+      - run: pip install -e ".[dev]" ruff isort==5.13.2 black==24.10.0
       - run: ruff check .
       - run: isort --check-only --diff .
       - run: black --check --diff xpyd
