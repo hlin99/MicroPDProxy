@@ -10,6 +10,10 @@ REQUEST_COUNT="${REQUEST_COUNT:-1}"
 # shellcheck source=../../lib/proxy_api_smoke.sh
 source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 
+metrics_before="$(mktemp "${TMPDIR:-/tmp}/xpyd-metrics-before.XXXXXX")"
+trap 'rm -f "${metrics_before}"' EXIT
+capture_prometheus_metrics "${metrics_before}"
+
 for ((request_index = 1; request_index <= REQUEST_COUNT; request_index++)); do
     completion="$(
         curl --fail-with-body --silent --show-error \
@@ -37,6 +41,7 @@ assert output["usage"]["completion_tokens"] == 4, output["usage"]
 done
 
 smoke_chat_completion
+smoke_streaming_metrics disaggregated
 
 models="$(
     curl --fail --silent --show-error "${PROXY_ENDPOINT}/v1/models"
@@ -51,32 +56,12 @@ assert [model["id"] for model in output["data"]] == [
 ], output
 ' <<<"${models}"
 
-metrics="$(
-    curl --fail --silent --show-error "${PROXY_ENDPOINT}/metrics"
-)"
-grep -q 'proxy_prefill_requests_total{' <<<"${metrics}"
-grep -q 'proxy_decode_requests_total{' <<<"${metrics}"
-
-METRICS="${metrics}" python - <<'PY'
-import os
-import re
-
-expected_prefill = set(filter(None, os.getenv("EXPECTED_PREFILL_INSTANCES", "").split(",")))
-expected_decode = set(filter(None, os.getenv("EXPECTED_DECODE_INSTANCES", "").split(",")))
-if expected_prefill or expected_decode:
-    selected_prefill = set()
-    selected_decode = set()
-    for line in os.environ["METRICS"].splitlines():
-        if not line.startswith("proxy_prefill_requests_total{"):
-            continue
-        labels = dict(re.findall(r'(\w+)="([^"]*)"', line))
-        if float(line.rsplit(" ", 1)[1]) > 0:
-            selected_prefill.add(labels["prefill_instance"])
-            selected_decode.add(labels["decode_instance"])
-    assert expected_prefill <= selected_prefill, (expected_prefill, selected_prefill)
-    assert expected_decode <= selected_decode, (expected_decode, selected_decode)
-PY
-
 smoke_all_endpoints
+validate_prometheus_metrics \
+    disaggregated "${metrics_before}" "$((REQUEST_COUNT + 1))" \
+    --expected-prefill "${EXPECTED_PREFILL_INSTANCES:-}" \
+    --expected-decode "${EXPECTED_DECODE_INSTANCES:-}"
+rm -f "${metrics_before}"
+trap - EXIT
 
 echo "OPT-125M NIXL TCP ${TOPOLOGY_NAME:-1P1D} smoke test passed."

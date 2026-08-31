@@ -26,6 +26,7 @@ from xpyd.metrics import (
     proxy_decode_requests_total,
     proxy_instance_errors_total,
     proxy_prefill_active_requests,
+    proxy_prefill_queue_depth,
     proxy_prefill_requests_total,
     record_disaggregated_metrics,
     track_request_end,
@@ -705,6 +706,11 @@ async def handle_completion(
             decode_instance=decode_instance,
             model=model_label,
         ).inc()
+        proxy_prefill_queue_depth.labels(
+            prefill_instance=prefill_instance,
+            decode_instance=decode_instance,
+            model=model_label,
+        ).set(0)
         proxy_decode_requests_total.labels(
             prefill_instance=prefill_instance,
             decode_instance=decode_instance,

@@ -7,6 +7,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.responses import JSONResponse
 
+from xpyd.metrics import REGISTRY
 from xpyd.routes.completions import (
     _chat_completion_nonstream,
     _chat_completion_stream,
@@ -566,6 +567,12 @@ class TestHandleCompletion:
         server.prefill_cycler = MagicMock()
         server.decode_cycler = MagicMock()
         server.exception_handler = MagicMock()
+        labels = {
+            "instance": "unknown",
+            "error_type": "no_available_instance",
+            "model": "unknown",
+        }
+        before = REGISTRY.get_sample_value("proxy_instance_errors_total", labels) or 0
 
         with (
             patch("xpyd.routes.completions.track_request_start", return_value=0),
@@ -580,6 +587,10 @@ class TestHandleCompletion:
         assert result.status_code == 503
         server.exception_handler.assert_not_called()
         track_end.assert_called_once_with("/v1/completions", 0)
+        assert (
+            REGISTRY.get_sample_value("proxy_instance_errors_total", labels)
+            == before + 1
+        )
 
     def test_request_reservation_releases_each_node_once(self, server):
         server.exception_handler = MagicMock()
