@@ -2,8 +2,13 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROXY_ENDPOINT="${PROXY_ENDPOINT:-http://127.0.0.1:8868}"
 MODEL="facebook/opt-125m"
+export BACKEND="${BACKEND:-127.0.0.1:8000}"
+
+# shellcheck source=../../lib/proxy_api_smoke.sh
+source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
 
 completion="$(
     curl --fail-with-body --silent --show-error \
@@ -33,41 +38,7 @@ assert output["choices"][0]["finish_reason"] == "length", output
 assert output["usage"]["completion_tokens"] == 4, output["usage"]
 ' <<<"${completion}"
 
-chat_result="$(
-    curl --silent --show-error --write-out $'\n%{http_code}' \
-        "${PROXY_ENDPOINT}/v1/chat/completions" \
-        -H "Content-Type: application/json" \
-        -d "{
-            \"model\": \"${MODEL}\",
-            \"messages\": [{\"role\": \"user\", \"content\": \"Say hello\"}],
-            \"max_tokens\": 4,
-            \"temperature\": 0
-        }"
-)"
-chat="${chat_result%$'\n'*}"
-chat_status="${chat_result##*$'\n'}"
-if [[ "${chat_status}" != "200" ]]; then
-    echo "ERROR: chat completion returned HTTP ${chat_status}: ${chat}" >&2
-    exit 1
-fi
-
-python -c '
-import json
-import sys
-
-output = json.load(sys.stdin)
-assert output["object"] == "chat.completion", output
-assert output["model"] == "facebook/opt-125m", output
-assert isinstance(output["id"], str) and output["id"], output
-assert isinstance(output["created"], int), output
-assert len(output["choices"]) == 1, output
-choice = output["choices"][0]
-assert choice["index"] == 0, output
-assert choice["message"]["role"] == "assistant", output
-assert choice["message"]["content"], output
-assert choice["finish_reason"] == "length", output
-assert output["usage"]["completion_tokens"] == 4, output["usage"]
-' <<<"${chat}"
+smoke_chat_completion
 
 stream="$(
     curl --fail --silent --show-error --no-buffer \
@@ -111,10 +82,11 @@ health="$(
 )"
 python -c '
 import json
+import os
 import sys
 
 output = json.load(sys.stdin)
-backend = output["127.0.0.1:8000"]
+backend = output[os.environ["BACKEND"]]
 assert backend["status"] == 200, output
 assert backend["type"] == "text", output
 ' <<<"${health}"
@@ -160,5 +132,7 @@ grep -q 'proxy_requests_total{endpoint="/v1/completions"}' <<<"${metrics}"
 grep -q 'proxy_requests_total{endpoint="/v1/chat/completions"}' <<<"${metrics}"
 grep -q "proxy_request_duration_seconds" <<<"${metrics}"
 grep -q "proxy_active_requests 0.0" <<<"${metrics}"
+
+smoke_all_endpoints
 
 echo "OPT-125M aggregated CPU API smoke tests passed."

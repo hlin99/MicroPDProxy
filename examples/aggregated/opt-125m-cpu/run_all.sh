@@ -13,6 +13,10 @@ AUTO_FAILURE_CACHE="${LOG_DIR}/hf-auto-failure"
 PROXY_PID=""
 BACKEND_PID=""
 
+# Exercised by smoke_test.sh against the admin endpoint. Never a real secret:
+# the proxy only binds to loopback for the duration of this check.
+export ADMIN_API_KEY="${ADMIN_API_KEY:-xpyd-example-admin-key}"
+
 cleanup() {
     for pid in "${BACKEND_PID}" "${PROXY_PID}"; do
         if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
@@ -152,6 +156,33 @@ assert_inference_status() {
     }
 }
 
+assert_health_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/health"
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /health HTTP ${expected}, got ${actual}." >&2
+        curl --silent "${PROXY_ENDPOINT}/health" >&2 || true
+        return 1
+    }
+}
+
+assert_passthrough_status() {
+    local expected=$1 actual
+    actual="$(
+        curl --silent --output /dev/null --write-out "%{http_code}" \
+            "${PROXY_ENDPOINT}/tokenize" \
+            -H "Content-Type: application/json" \
+            -d '{"model": "facebook/opt-125m", "prompt": "offline check"}'
+    )"
+    [[ "${actual}" == "${expected}" ]] || {
+        echo "ERROR: expected /tokenize HTTP ${expected}, got ${actual}." >&2
+        return 1
+    }
+}
+
 start_backend() {
     bash "${SCRIPT_DIR}/vllm_server.sh" >>"${LOG_DIR}/vllm.log" 2>&1 &
     BACKEND_PID=$!
@@ -178,6 +209,8 @@ echo "=== Phase 1: proxy-first startup with backend offline ==="
 start_proxy "${LOCAL_CONFIG}"
 wait_for_instance_status unhealthy
 assert_inference_status 503
+assert_passthrough_status 503
+assert_health_status 503
 
 echo "=== Phase 2: node discovery and inference ==="
 start_backend
@@ -189,6 +222,8 @@ bash "${SCRIPT_DIR}/smoke_test.sh"
 echo "=== Phase 3: node loss ==="
 stop_backend
 assert_inference_status 503
+assert_passthrough_status 503
+assert_health_status 503
 
 echo "=== Phase 4: node reconnection ==="
 start_backend
@@ -216,6 +251,8 @@ wait_for_discovered_model
 wait_for_log_count \
     "Falling back to roundrobin scheduling for this model." 1
 assert_inference_status 200
+source "${SCRIPT_DIR}/../../lib/proxy_api_smoke.sh"
+smoke_admin_success decode 127.0.0.1:8000
 
 grep -q "Node heartbeat | mode=aggregated | aggregated=0/1 online" \
     "${LOG_DIR}/proxy.log"
