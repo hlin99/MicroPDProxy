@@ -62,24 +62,36 @@ wait_for_proxy_close() {
 
 start_node() {
     local role=$1 port=$2 side_port=$3 log=$4 pid
+    echo "Starting ${role} node on port ${port}..."
     bash "${NIXL_EXAMPLE}/vllm_server.sh" \
         "${role}" "${port}" "${side_port}" >"${log}" 2>&1 &
     pid=$!
     NODE_PIDS+=("${pid}")
-    wait_for_url "http://127.0.0.1:${port}/health" "${pid}"
+    if ! wait_for_url "http://127.0.0.1:${port}/health" "${pid}"; then
+        echo "${role} node on port ${port} failed to become healthy."
+        tail -n 50 "${log}"
+        return 1
+    fi
+    echo "${role} node on port ${port} is healthy."
 }
 
 start_proxy() {
     local scheduler=$1 config log
     config="${SCRIPT_DIR}/scheduler_configs/${scheduler}.yaml"
     log="${LOG_DIR}/${scheduler}.log"
+    echo "Starting proxy with ${scheduler} scheduler..."
     (
         cd "${ROOT}"
-        PYTHONPATH="${ROOT}" python -c \
+        exec env PYTHONPATH="${ROOT}" python -c \
             "from xpyd.proxy import main; main()" proxy --config "${config}"
     ) >"${log}" 2>&1 &
     PROXY_PID=$!
-    wait_for_url http://127.0.0.1:8868/status/instances "${PROXY_PID}"
+    if ! wait_for_url http://127.0.0.1:8868/status/instances "${PROXY_PID}"; then
+        echo "Proxy with ${scheduler} scheduler failed to start."
+        tail -n 50 "${log}"
+        return 1
+    fi
+    echo "Proxy with ${scheduler} scheduler is ready."
 }
 
 mkdir -p "${LOG_DIR}"
@@ -101,6 +113,7 @@ for scheduler in "${SCHEDULERS[@]}"; do
     echo "=== ${scheduler} ===" | tee -a "${LOG_DIR}/phases.log"
     wait_for_all_instances
     python "${SCRIPT_DIR}/smoke_test.py" "${scheduler}"
+    echo "Stopping proxy with ${scheduler} scheduler..."
     kill "${PROXY_PID}"
     wait "${PROXY_PID}" 2>/dev/null || true
     PROXY_PID=""
